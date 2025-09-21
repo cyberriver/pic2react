@@ -1,0 +1,89 @@
+{
+  "reactVersions": {
+    "16": {
+      "hooks": false,
+      "fragments": true,
+      "context": true,
+      "suspense": false,
+      "concurrent": false,
+      "templatePath": "templates/react16/"
+    },
+    "17": {
+      "hooks": true,
+      "fragments": true,
+      "context": true,
+      "suspense": true,
+      "concurrent": false,
+      "templatePath": "templates/react17/"
+    },
+    "18": {
+      "hooks": true,
+      "fragments": true,
+      "context": true,
+      "suspense": true,
+      "concurrent": true,
+      "templatePath": "templates/react18/"
+    },
+    "19": {
+      "hooks": true,
+      "fragments": true,
+      "context": true,
+      "suspense": true,
+      "concurrent": true,
+      "templatePath": "templates/react19/"
+    }
+  },
+  "styling": {
+    "css": {
+      "extension": ".css",
+      "importStyle": "import './ComponentName.css';",
+      "classNameFormat": "kebab-case"
+    },
+    "scss": {
+      "extension": ".scss",
+      "importStyle": "import './ComponentName.scss';",
+      "classNameFormat": "kebab-case"
+    },
+    "styled-components": {
+      "extension": ".styles.js",
+      "importStyle": "import { StyledComponent } from './ComponentName.styles';",
+      "classNameFormat": "camelCase"
+    },
+    "emotion": {
+      "extension": ".styles.js",
+      "importStyle": "import { styled } from '@emotion/styled';",
+      "classNameFormat": "camelCase"
+    },
+    "tailwind": {
+      "extension": ".tsx",
+      "importStyle": "",
+      "classNameFormat": "kebab-case"
+    }
+  },
+  "fileTypes": {
+    "component": {
+      "extension": ".tsx",
+      "template": "functional-component.hbs"
+    },
+    "styles": {
+      "extension": ".css",
+      "template": "styles.hbs"
+    },
+    "types": {
+      "extension": ".types.ts",
+      "template": "types.hbs"
+    },
+    "stories": {
+      "extension": ".stories.tsx",
+      "template": "stories.hbs"
+    },
+    "test": {
+      "extension": ".test.tsx",
+      "template": "test.hbs"
+    },
+    "docs": {
+      "extension": ".md",
+      "template": "docs.hbs"
+    }
+  }
+}

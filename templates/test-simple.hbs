@@ -1,0 +1,20 @@
+import React from 'react';
+
+const {{componentName}} = () => {
+  return (
+    <div>
+      <h1>{{componentName}}</h1>
+      {{#each elements}}
+      <div key="{{id}}" style={{
+        width: '{{properties.width}}px',
+        height: '{{properties.height}}px',
+        backgroundColor: '{{properties.backgroundColor}}'
+      }}>
+        {{extractedText}}
+      </div>
+      {{/each}}
+    </div>
+  );
+};
+
+export default {{componentName}};

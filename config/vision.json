@@ -1,0 +1,33 @@
+{
+  "models": {
+    "openai": {
+      "apiKey": "${OPENAI_API_KEY}",
+      "model": "gpt-4-vision-preview",
+      "maxTokens": 4096,
+      "temperature": 0.1
+    },
+    "yolo": {
+      "modelPath": "./models/ui-elements-yolo.pt",
+      "confidenceThreshold": 0.7,
+      "classes": ["button", "input", "text", "image", "card", "table", "container", "form", "navigation", "sidebar"]
+    },
+    "ocr": {
+      "languages": ["en", "ru"],
+      "confidenceThreshold": 0.8
+    }
+  },
+  "preprocessing": {
+    "resize": true,
+    "maxWidth": 1920,
+    "maxHeight": 1080,
+    "denoise": true,
+    "contrastEnhancement": true,
+    "supportedFormats": ["png", "jpg", "jpeg", "webp"]
+  },
+  "analysis": {
+    "maxFileSize": 52428800,
+    "timeout": 30000,
+    "retryAttempts": 3,
+    "batchSize": 5
+  }
+}

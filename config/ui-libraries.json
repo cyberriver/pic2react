@@ -1,0 +1,76 @@
+{
+  "mui": {
+    "name": "Material-UI",
+    "version": "^5.14.0",
+    "imports": {
+      "Button": "@mui/material/Button",
+      "TextField": "@mui/material/TextField",
+      "Card": "@mui/material/Card",
+      "CardContent": "@mui/material/CardContent",
+      "CardActions": "@mui/material/CardActions",
+      "Typography": "@mui/material/Typography",
+      "Box": "@mui/material/Box",
+      "Container": "@mui/material/Container",
+      "Grid": "@mui/material/Grid",
+      "Table": "@mui/material/Table",
+      "TableBody": "@mui/material/TableBody",
+      "TableCell": "@mui/material/TableCell",
+      "TableHead": "@mui/material/TableHead",
+      "TableRow": "@mui/material/TableRow"
+    },
+    "templates": "templates/mui/",
+    "styling": "makeStyles",
+    "themeProvider": true
+  },
+  "antd": {
+    "name": "Ant Design",
+    "version": "^5.12.0",
+    "imports": {
+      "Button": "antd/es/button",
+      "Input": "antd/es/input",
+      "Card": "antd/es/card",
+      "Typography": "antd/es/typography",
+      "Space": "antd/es/space",
+      "Row": "antd/es/row",
+      "Col": "antd/es/col",
+      "Table": "antd/es/table",
+      "Form": "antd/es/form"
+    },
+    "templates": "templates/antd/",
+    "styling": "css",
+    "themeProvider": true
+  },
+  "chakra": {
+    "name": "Chakra UI",
+    "version": "^2.8.0",
+    "imports": {
+      "Button": "@chakra-ui/react",
+      "Input": "@chakra-ui/react",
+      "Card": "@chakra-ui/react",
+      "Box": "@chakra-ui/react",
+      "Text": "@chakra-ui/react",
+      "Heading": "@chakra-ui/react",
+      "VStack": "@chakra-ui/react",
+      "HStack": "@chakra-ui/react"
+    },
+    "templates": "templates/chakra/",
+    "styling": "chakra",
+    "themeProvider": true
+  },
+  "bootstrap": {
+    "name": "Bootstrap",
+    "version": "^5.3.0",
+    "imports": {},
+    "templates": "templates/bootstrap/",
+    "styling": "css",
+    "themeProvider": false
+  },
+  "none": {
+    "name": "Pure CSS",
+    "version": null,
+    "imports": {},
+    "templates": "templates/pure/",
+    "styling": "css",
+    "themeProvider": false
+  }
+}

@@ -1,0 +1,70 @@
+import type { Meta, StoryObj } from '@storybook/react';
+import { {{componentName}} } from './{{componentName}}';
+
+const meta: Meta<typeof {{componentName}}> = {
+  title: 'Components/{{componentName}}',
+  component: {{componentName}},
+  parameters: {
+    layout: 'centered',
+  },
+  tags: ['autodocs'],
+  argTypes: {
+    {{#each props}}
+    {{name}}: {
+      control: '{{#if_eq type "string"}}text{{else}}{{#if_eq type "boolean"}}boolean{{else}}{{#if_eq type "number"}}number{{else}}text{{/if_eq}}{{/if_eq}}',
+      description: '{{name}} - описание свойства'
+    },
+    {{/each}}
+  },
+};
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const Default: Story = {
+  args: {
+    {{#each props}}
+    {{name}}: {{#if defaultValue}}{{defaultValue}}{{else}}{{#if_eq type "string"}}'{{mockData.props.[name]}}'{{else}}{{#if_eq type "boolean"}}false{{else}}{{#if_eq type "number"}}0{{else}}null{{/if_eq}}{{/if_eq}}{{/if_eq}},
+    {{/each}}
+  },
+};
+
+export const WithData: Story = {
+  args: {
+    {{#each props}}
+    {{name}}: {{#if_eq type "string"}}'{{mockData.props.[name]}}'{{else}}{{#if_eq type "boolean"}}true{{else}}{{#if_eq type "number"}}42{{else}}null{{/if_eq}}{{/if_eq}},
+    {{/each}}
+  },
+};
+
+{{#if elements}}
+export const Interactive: Story = {
+  args: {
+    {{#each props}}
+    {{name}}: {{#if_eq type "string"}}'{{mockData.props.[name]}}'{{else}}{{#if_eq type "boolean"}}true{{else}}{{#if_eq type "number"}}42{{else}}null{{/if_eq}}{{/if_eq}},
+    {{/each}}
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'Интерактивный пример компонента с обработчиками событий.',
+      },
+    },
+  },
+};
+{{/if}}
+
+export const Loading: Story = {
+  args: {
+    {{#each props}}
+    {{name}}: {{#if_eq type "string"}}'{{mockData.props.[name]}}'{{else}}{{#if_eq type "boolean"}}true{{else}}{{#if_eq type "number"}}42{{else}}null{{/if_eq}}{{/if_eq}},
+    {{/each}}
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'Состояние загрузки компонента.',
+      },
+    },
+  },
+};

@@ -1,0 +1,195 @@
+# {{componentName}}
+
+{{#if elements}}
+Автоматически сгенерированный React компонент на основе анализа UI элементов.
+
+## Описание
+
+Компонент `{{componentName}}` содержит следующие элементы:
+{{#each elements}}
+- **{{type}}** ({{id}}): {{extractedText}}
+{{/each}}
+
+## Установка
+
+```bash
+npm install
+```
+
+## Использование
+
+### Базовое использование
+
+```tsx
+import { {{componentName}} } from './{{componentName}}';
+
+function App() {
+  return (
+    <{{componentName}} />
+  );
+}
+```
+
+### С кастомными props
+
+```tsx
+import { {{componentName}} } from './{{componentName}}';
+
+function App() {
+  return (
+    <{{componentName}}
+      {{#each props}}
+      {{name}}={{{#if_eq type "string"}}'{{mockData.props.[name]}}'{{else}}{{#if_eq type "boolean"}}true{{else}}{{#if_eq type "number"}}42{{else}}null{{/if_eq}}{{/if_eq}}}
+      {{/each}}
+    />
+  );
+}
+```
+
+## Props
+
+| Prop | Тип | Обязательный | По умолчанию | Описание |
+|------|-----|--------------|--------------|----------|
+{{#each props}}
+| `{{name}}` | `{{type}}` | {{#if optional}}Нет{{else}}Да{{/if}} | {{#if defaultValue}}{{defaultValue}}{{else}}-{{/if}} | {{name}} - описание свойства |
+{{/each}}
+
+## События
+
+{{#each eventHandlers}}
+### {{name}}
+
+```tsx
+const handle{{capitalize name}} = ({{parameters}}) => {
+  // Обработка события
+};
+
+<{{componentName}} {{name}}={handle{{capitalize name}}} />
+```
+
+{{/each}}
+
+## Стилизация
+
+Компонент использует CSS классы для стилизации:
+
+- `.{{kebabCase componentName}}` - основной контейнер
+{{#each elements}}
+- `.{{type}}-{{id}}` - стили для {{type}} элемента
+{{/each}}
+
+### Кастомизация через CSS
+
+```css
+.{{kebabCase componentName}} {
+  /* Ваши стили */
+}
+
+.{{kebabCase componentName}} .button-{{id}} {
+  background-color: #your-color;
+}
+```
+
+## Состояние
+
+Компонент использует следующие хуки состояния:
+
+{{#each stateHooks}}
+- `{{name}}` - {{#if_eq name "inputValue"}}значение поля ввода{{else}}{{#if_eq name "isLoading"}}состояние загрузки{{else}}состояние {{name}}{{/if_eq}}{{/if_eq}}
+{{/each}}
+
+## Примеры
+
+### Форма с валидацией
+
+```tsx
+import { {{componentName}} } from './{{componentName}}';
+import { useState } from 'react';
+
+function FormExample() {
+  const [formData, setFormData] = useState({});
+  
+  const handleSubmit = (data) => {
+    console.log('Form submitted:', data);
+  };
+
+  return (
+    <{{componentName}}
+      onButtonClick={handleSubmit}
+      onInputChange={(value) => setFormData({...formData, input: value})}
+    />
+  );
+}
+```
+
+### С обработкой загрузки
+
+```tsx
+import { {{componentName}} } from './{{componentName}}';
+import { useState } from 'react';
+
+function LoadingExample() {
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const handleAsyncAction = async () => {
+    setIsLoading(true);
+    try {
+      await someAsyncOperation();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <{{componentName}}
+      isLoading={isLoading}
+      onButtonClick={handleAsyncAction}
+    />
+  );
+}
+```
+
+## Тестирование
+
+Компонент включает набор тестов Jest:
+
+```bash
+npm test {{componentName}}
+```
+
+## Storybook
+
+Для просмотра всех вариантов использования компонента:
+
+```bash
+npm run storybook
+```
+
+## Технические детали
+
+- **React версия**: {{reactVersion}}
+- **TypeScript**: {{#if typescript}}Да{{else}}Нет{{/if}}
+- **UI библиотека**: {{uiLibrary}}
+- **Стилизация**: {{styling}}
+- **Сгенерировано**: {{metadata.generatedAt}}
+
+## Цветовая схема
+
+{{#if colors}}
+- **Основной цвет**: {{colors.primary}}
+- **Вторичный цвет**: {{colors.secondary}}
+- **Фон**: {{colors.background}}
+- **Текст**: {{colors.text}}
+{{/if}}
+
+## Типографика
+
+{{#if typography}}
+- **Основной шрифт**: {{typography.primaryFont}}
+- **Размер текста**: {{typography.primarySize}}px
+- **Размеры заголовков**: {{typography.headingSizes}}px
+{{/if}}
+
+## Поддержка
+
+Если у вас есть вопросы или предложения по улучшению компонента, создайте issue в репозитории проекта.

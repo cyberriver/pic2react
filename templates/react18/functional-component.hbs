@@ -1,0 +1,129 @@
+import React{{#if hooks}}, { {{#each hooks}}{{this}}{{#unless @last}}, {{/unless}}{{/each}} }{{/if}} from 'react';
+{{#each imports}}
+import {{name}} from '{{path}}';
+{{/each}}
+{{#if typescript}}
+interface {{componentName}}Props {
+  {{#each props}}
+  {{name}}{{#if optional}}?{{/if}}: {{type}};
+  {{/each}}
+}
+{{/if}}
+
+const {{componentName}}{{#if typescript}}: React.FC<{{componentName}}Props>{{/if}} = ({{#if props}}{
+  {{#each props}}{{name}}{{#if defaultValue}} = {{defaultValue}}{{/if}},{{/each}}
+}{{/if}}) => {
+  {{#each stateHooks}}
+  const [{{name}}, set{{capitalize name}}] = useState({{initialValue}});
+  {{/each}}
+
+  {{#each eventHandlers}}
+  const {{name}} = {{#if async}}async {{/if}}({{parameters}}) => {
+    {{body}}
+  };
+  {{/each}}
+
+  return (
+    <div className="{{kebabCase componentName}}">
+      {{#each elements}}
+      {{#if_eq type "button"}}
+      <button 
+        className="button-{{id}}"
+        onClick={handleButtonClick}
+        style={{
+          width: '{{properties.width}}px',
+          height: '{{properties.height}}px',
+          backgroundColor: '{{properties.backgroundColor}}',
+          color: '{{properties.textColor}}',
+          borderRadius: '{{properties.borderRadius}}px'
+        }}
+      >
+        {{extractedText}}
+      </button>
+      {{/if_eq}}
+      
+      {{#if_eq type "input"}}
+      <input 
+        className="input-{{id}}"
+        type="text"
+        placeholder="Введите текст..."
+        value={inputValue}
+        onChange={handleInputChange}
+        style={{
+          width: '{{properties.width}}px',
+          height: '{{properties.height}}px',
+          borderRadius: '{{properties.borderRadius}}px'
+        }}
+      />
+      {{/if_eq}}
+      
+      {{#if_eq type "text"}}
+      <{{#if_eq properties.fontSize 24}}h1{{else}}{{#if_eq properties.fontSize 20}}h2{{else}}{{#if_eq properties.fontSize 16}}h3{{else}}p{{/if_eq}}{{/if_eq}}{{/if_eq}}
+        className="text-{{id}}"
+        style={{
+          fontSize: '{{properties.fontSize}}px',
+          fontWeight: '{{properties.fontWeight}}',
+          color: '{{properties.textColor}}'
+        }}
+      >
+        {{extractedText}}
+      </{{#if_eq properties.fontSize 24}}h1{{else}}{{#if_eq properties.fontSize 20}}h2{{else}}{{#if_eq properties.fontSize 16}}h3{{else}}p{{/if_eq}}{{/if_eq}}{{/if_eq}}>
+      {{/if_eq}}
+      
+      {{#if_eq type "card"}}
+      <div 
+        className="card-{{id}}"
+        style={{
+          width: '{{properties.width}}px',
+          height: '{{properties.height}}px',
+          backgroundColor: '{{properties.backgroundColor}}',
+          borderRadius: '{{properties.borderRadius}}px',
+          padding: '16px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+        }}
+      >
+        <h3>{{extractedText}}</h3>
+        <p>Содержимое карточки</p>
+      </div>
+      {{/if_eq}}
+      
+      {{#if_eq type "table"}}
+      <table className="table-{{id}}" style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th>Колонка 1</th>
+            <th>Колонка 2</th>
+            <th>Колонка 3</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Данные 1</td>
+            <td>Данные 2</td>
+            <td>Данные 3</td>
+          </tr>
+        </tbody>
+      </table>
+      {{/if_eq}}
+      
+      {{#if_eq type "image"}}
+      <img 
+        className="image-{{id}}"
+        src="{{properties.src}}"
+        alt="{{properties.alt}}"
+        style={{
+          width: '{{properties.width}}px',
+          height: '{{properties.height}}px',
+          borderRadius: '{{properties.borderRadius}}px'
+        }}
+      />
+      {{/if_eq}}
+      {{/each}}
+    </div>
+  );
+};
+
+export default {{componentName}};
+{{#if typescript}}
+export type { {{componentName}}Props };
+{{/if}}

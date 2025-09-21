@@ -1,0 +1,39 @@
+{
+  "server": {
+    "port": 3001,
+    "host": "localhost",
+    "cors": {
+      "origin": ["http://localhost:3000", "http://localhost:3001"],
+      "credentials": true
+    }
+  },
+  "paths": {
+    "incoming": "./incoming",
+    "processed": "./processed",
+    "output": "./output",
+    "packages": "./packages",
+    "templates": "./templates",
+    "config": "./config"
+  },
+  "processing": {
+    "maxConcurrentJobs": 3,
+    "queueTimeout": 300000,
+    "cleanupInterval": 3600000,
+    "maxRetries": 3
+  },
+  "logging": {
+    "level": "info",
+    "format": "combined",
+    "file": "./logs/app.log",
+    "maxSize": "10m",
+    "maxFiles": 5
+  },
+  "security": {
+    "maxFileSize": 52428800,
+    "allowedExtensions": [".png", ".jpg", ".jpeg", ".webp"],
+    "rateLimit": {
+      "windowMs": 900000,
+      "max": 100
+    }
+  }
+}

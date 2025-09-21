@@ -1,0 +1,74 @@
+import { render, screen, fireEvent } from '@testing-library/react';
+import { {{componentName}} } from './{{componentName}}';
+
+describe('{{componentName}}', () => {
+  const defaultProps = {
+    {{#each props}}
+    {{name}}: {{#if defaultValue}}{{defaultValue}}{{else}}{{#if_eq type "string"}}'test {{name}}'{{else}}{{#if_eq type "boolean"}}false{{else}}{{#if_eq type "number"}}0{{else}}undefined{{/if_eq}}{{/if_eq}}{{/if_eq}},
+    {{/each}}
+  };
+
+  it('renders correctly', () => {
+    render(<{{componentName}} {...defaultProps} />);
+    
+    {{#each elements}}
+    {{#if_eq type "button"}}
+    expect(screen.getByRole('button')).toBeInTheDocument();
+    {{/if_eq}}
+    {{#if_eq type "input"}}
+    expect(screen.getByRole('textbox')).toBeInTheDocument();
+    {{/if_eq}}
+    {{#if_eq type "text"}}
+    expect(screen.getByText(/{{extractedText}}/)).toBeInTheDocument();
+    {{/if_eq}}
+    {{/each}}
+  });
+
+  {{#each elements}}
+  {{#if_eq type "button"}}
+  it('handles button click', () => {
+    const mockOnClick = jest.fn();
+    render(<{{componentName}} {...defaultProps} onButtonClick={mockOnClick} />);
+    
+    const button = screen.getByRole('button');
+    fireEvent.click(button);
+    
+    expect(mockOnClick).toHaveBeenCalledTimes(1);
+  });
+  {{/if_eq}}
+  
+  {{#if_eq type "input"}}
+  it('handles input change', () => {
+    const mockOnChange = jest.fn();
+    render(<{{componentName}} {...defaultProps} onInputChange={mockOnChange} />);
+    
+    const input = screen.getByRole('textbox');
+    fireEvent.change(input, { target: { value: 'new value' } });
+    
+    expect(mockOnChange).toHaveBeenCalledWith('new value');
+  });
+  {{/if_eq}}
+  {{/each}}
+
+  it('applies custom className', () => {
+    const { container } = render(<{{componentName}} {...defaultProps} />);
+    expect(container.firstChild).toHaveClass('{{kebabCase componentName}}');
+  });
+
+  {{#each props}}
+  it('renders with {{name}} prop', () => {
+    const customProps = {
+      ...defaultProps,
+      {{name}}: {{#if_eq type "string"}}'custom {{name}}'{{else}}{{#if_eq type "boolean"}}true{{else}}{{#if_eq type "number"}}42{{else}}'custom'{{/if_eq}}{{/if_eq}}
+    };
+    
+    render(<{{componentName}} {...customProps} />);
+    // Добавьте проверки для конкретного prop
+  });
+  {{/each}}
+
+  it('matches snapshot', () => {
+    const { container } = render(<{{componentName}} {...defaultProps} />);
+    expect(container.firstChild).toMatchSnapshot();
+  });
+});

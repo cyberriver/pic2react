@@ -1,0 +1,59 @@
+{{#if typescript}}
+export interface {{componentName}}Props {
+  {{#each props}}
+  /** {{name}} - описание свойства */
+  {{name}}{{#if optional}}?{{/if}}: {{type}};
+  {{/each}}
+}
+
+export interface {{componentName}}State {
+  {{#each stateHooks}}
+  {{name}}: {{#if_eq name "inputValue"}}string{{else}}{{#if_eq name "isLoading"}}boolean{{else}}any{{/if_eq}}{{/if_eq}};
+  {{/each}}
+}
+
+export interface {{componentName}}Element {
+  id: string;
+  type: 'button' | 'input' | 'text' | 'image' | 'card' | 'table' | 'container';
+  bbox: [number, number, number, number];
+  confidence: number;
+  properties: {
+    width: number;
+    height: number;
+    backgroundColor?: string;
+    textColor?: string;
+    borderRadius?: number;
+    fontSize?: number;
+    fontWeight?: string;
+  };
+  extractedText?: string;
+}
+
+export interface {{componentName}}Layout {
+  type: 'flexbox' | 'grid' | 'absolute';
+  direction: 'row' | 'column';
+  gap: number;
+  padding: number;
+}
+
+export interface {{componentName}}Colors {
+  primary: string;
+  secondary: string;
+  background: string;
+  text: string;
+}
+
+export interface {{componentName}}Typography {
+  primaryFont: string;
+  primarySize: number;
+  headingSizes: number[];
+}
+
+export type {{componentName}}EventHandlers = {
+  {{#each eventHandlers}}
+  {{name}}: ({{parameters}}) => {{#if async}}Promise<{{/if}}void{{#if async}}>{{/if}};
+  {{/each}}
+};
+{{else}}
+// TypeScript не используется в этом проекте
+{{/if}}
