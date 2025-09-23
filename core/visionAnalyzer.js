@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import logger from '../utils/logger.js';
 import { readFileSync } from 'fs';
 const visionConfig = JSON.parse(readFileSync(new URL('../config/vision.json', import.meta.url), 'utf8'));
+const promptsConfig = JSON.parse(readFileSync(new URL('../config/prompts.json', import.meta.url), 'utf8'));
 
 /**
  * VisionAnalyzer - анализ изображений через OpenAI Vision API
@@ -99,92 +100,112 @@ class VisionAnalyzer {
    */
   async performVisionAnalysis(imageBuffer, options) {
     const prompt = this.buildAnalysisPrompt(options);
+    const maxRetries = promptsConfig.errorHandling.maxRetries;
+    let lastError = null;
     
-    try {
-      const response = await this.openai.chat.completions.create({
-        model: this.model,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: prompt
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:image/png;base64,${imageBuffer.toString('base64')}`
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        logger.info(`Попытка анализа ${attempt}/${maxRetries}`);
+        
+        const response = await this.openai.chat.completions.create({
+          model: this.model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: prompt
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:image/png;base64,${imageBuffer.toString('base64')}`
+                  }
                 }
-              }
-            ]
+              ]
+            }
+          ],
+          max_tokens: this.maxTokens,
+          temperature: this.temperature
+        });
+
+        const content = response.choices[0].message.content;
+        logger.debug('Получен ответ от Vision API:', content.substring(0, 500) + '...');
+        
+        // Пытаемся распарсить JSON
+        let analysis;
+        try {
+          analysis = JSON.parse(content);
+        } catch (parseError) {
+          logger.warn(`Ошибка парсинга JSON (попытка ${attempt}):`, parseError.message);
+          
+          if (attempt === maxRetries) {
+            // Последняя попытка - используем fallback
+            logger.warn('Используем fallback промпт');
+            return await this.performFallbackAnalysis(imageBuffer, options);
           }
-        ],
-        max_tokens: this.maxTokens,
-        temperature: this.temperature
-      });
+          
+          // Пробуем исправить JSON
+          const cleanedContent = this.cleanJsonResponse(content);
+          try {
+            analysis = JSON.parse(cleanedContent);
+          } catch (retryParseError) {
+            logger.warn(`Не удалось исправить JSON (попытка ${attempt}):`, retryParseError.message);
+            lastError = retryParseError;
+            await this.delay(promptsConfig.errorHandling.retryDelay);
+            continue;
+          }
+        }
+        
+        // Валидация структуры
+        if (!this.validateAnalysisStructure(analysis)) {
+          logger.warn(`Некорректная структура анализа (попытка ${attempt})`);
+          if (attempt === maxRetries) {
+            return await this.performFallbackAnalysis(imageBuffer, options);
+          }
+          lastError = new Error('Некорректная структура анализа');
+          await this.delay(promptsConfig.errorHandling.retryDelay);
+          continue;
+        }
+        
+        // Добавляем информацию о токенах и температуре
+        analysis.metadata = {
+          ...analysis.metadata,
+          tokens: {
+            prompt: response.usage?.prompt_tokens || 0,
+            completion: response.usage?.completion_tokens || 0,
+            total: response.usage?.total_tokens || 0
+          },
+          temperature: this.temperature,
+          model: this.model,
+          processingTime: Date.now(),
+          attempts: attempt
+        };
 
-      const content = response.choices[0].message.content;
-      return JSON.parse(content);
+        logger.info(`Анализ успешно завершен с попытки ${attempt}`);
+        return analysis;
 
-    } catch (error) {
-      logger.error('Ошибка OpenAI Vision API:', error);
-      throw error;
+      } catch (error) {
+        logger.error(`Ошибка OpenAI Vision API (попытка ${attempt}):`, error);
+        lastError = error;
+        
+        if (attempt < maxRetries) {
+          await this.delay(promptsConfig.errorHandling.retryDelay);
+        }
+      }
     }
+    
+    // Если все попытки неудачны
+    logger.error('Все попытки анализа неудачны, используем fallback');
+    return await this.performFallbackAnalysis(imageBuffer, options);
   }
 
   /**
    * Построение промпта для анализа
    */
   buildAnalysisPrompt(options = {}) {
-    return `Проанализируй это изображение UI интерфейса и определи все видимые элементы. 
-
-Верни результат в формате JSON со следующей структурой:
-{
-  "elements": [
-    {
-      "id": "unique_id",
-      "type": "button|input|text|image|card|table|container|form|navigation|sidebar",
-      "bbox": [x1, y1, x2, y2],
-      "confidence": 0.95,
-      "properties": {
-        "width": 120,
-        "height": 40,
-        "backgroundColor": "#1976d2",
-        "textColor": "#ffffff",
-        "borderRadius": 4,
-        "fontSize": 14,
-        "fontWeight": "500"
-      },
-      "extractedText": "Click me"
-    }
-  ],
-  "layout": {
-    "type": "flexbox|grid|absolute",
-    "direction": "row|column",
-    "gap": 16,
-    "padding": 24
-  },
-  "colors": {
-    "primary": "#1976d2",
-    "secondary": "#dc004e",
-    "background": "#ffffff",
-    "text": "#000000"
-  },
-  "typography": {
-    "primaryFont": "Roboto",
-    "primarySize": 14,
-    "headingSizes": [24, 20, 16]
-  }
-}
-
-Важно:
-- Определи точные координаты bounding box для каждого элемента
-- Извлеки весь видимый текст
-- Определи цвета (hex коды)
-- Оцени уверенность в каждом определении (0-1)
-- Сгруппируй связанные элементы в контейнеры
-- Определи общую структуру макета`;
+    return promptsConfig.visionAnalysis.userPrompt;
   }
 
   /**
@@ -200,6 +221,7 @@ class VisionAnalyzer {
       colors: analysis.colors || {},
       typography: analysis.typography || {},
       metadata: {
+        ...analysis.metadata,
         totalElements: analysis.elements?.length || 0,
         confidence: this.calculateOverallConfidence(analysis.elements || []),
         processingTime: Date.now()
@@ -210,15 +232,64 @@ class VisionAnalyzer {
     result.elements = result.elements.map((element, index) => ({
       ...element,
       id: element.id || `element_${index}`,
-      confidence: Math.max(0, Math.min(1, element.confidence || 0.5)),
-      bbox: this.validateBbox(element.bbox || [0, 0, 100, 100])
+      type: element.type || 'container',
+      properties: this.validateProperties(element.properties || {}),
+      position: this.validatePosition(element.position || { x: 0, y: 0, width: 100, height: 50 }),
+      children: element.children || []
     }));
 
     return result;
   }
 
   /**
-   * Валидация bounding box
+   * Валидация свойств элемента
+   */
+  validateProperties(properties) {
+    const defaultProps = {
+      title: '',
+      text: '',
+      value: '',
+      color: '#1976d2',
+      backgroundColor: '#ffffff',
+      textColor: '#000000',
+      fontSize: '14px',
+      fontWeight: '400',
+      borderRadius: '4px',
+      border: 'none',
+      padding: '8px',
+      margin: '0px',
+      width: '100%',
+      height: 'auto',
+      data: {},
+      config: {}
+    };
+
+    return { ...defaultProps, ...properties };
+  }
+
+  /**
+   * Валидация позиции элемента
+   */
+  validatePosition(position) {
+    const defaultPosition = {
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 50
+    };
+
+    return {
+      ...defaultPosition,
+      ...position,
+      x: Math.max(0, Number(position.x) || 0),
+      y: Math.max(0, Number(position.y) || 0),
+      width: Math.max(1, Number(position.width) || 100),
+      height: Math.max(1, Number(position.height) || 50)
+    };
+  }
+
+  /**
+   * Валидация bounding box (для обратной совместимости)
    */
   validateBbox(bbox) {
     if (!Array.isArray(bbox) || bbox.length !== 4) {
@@ -265,6 +336,111 @@ class VisionAnalyzer {
     }
 
     return results;
+  }
+
+  /**
+   * Fallback анализ при ошибках
+   */
+  async performFallbackAnalysis(imageBuffer, options) {
+    logger.warn('Выполняем fallback анализ');
+    
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: this.model,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: promptsConfig.visionAnalysis.fallbackPrompt
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/png;base64,${imageBuffer.toString('base64')}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: this.maxTokens,
+        temperature: this.temperature
+      });
+
+      const content = response.choices[0].message.content;
+      const analysis = JSON.parse(content);
+      
+      analysis.metadata = {
+        ...analysis.metadata,
+        tokens: {
+          prompt: response.usage?.prompt_tokens || 0,
+          completion: response.usage?.completion_tokens || 0,
+          total: response.usage?.total_tokens || 0
+        },
+        temperature: this.temperature,
+        model: this.model,
+        processingTime: Date.now(),
+        fallback: true
+      };
+
+      return analysis;
+    } catch (error) {
+      logger.error('Ошибка fallback анализа:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Очистка JSON ответа
+   */
+  cleanJsonResponse(content) {
+    // Удаляем markdown блоки
+    let cleaned = content.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    
+    // Удаляем лишние символы в начале и конце
+    cleaned = cleaned.trim();
+    
+    // Ищем JSON объект в тексте
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
+    
+    return cleaned;
+  }
+
+  /**
+   * Валидация структуры анализа
+   */
+  validateAnalysisStructure(analysis) {
+    if (!analysis || typeof analysis !== 'object') {
+      return false;
+    }
+    
+    if (!Array.isArray(analysis.elements)) {
+      return false;
+    }
+    
+    // Проверяем хотя бы один элемент
+    if (analysis.elements.length === 0) {
+      return false;
+    }
+    
+    // Проверяем структуру первого элемента
+    const firstElement = analysis.elements[0];
+    if (!firstElement.id || !firstElement.type) {
+      return false;
+    }
+    
+    return true;
+  }
+
+  /**
+   * Задержка между попытками
+   */
+  delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

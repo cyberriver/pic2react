@@ -13,6 +13,8 @@ import VisionAnalyzer from '../core/visionAnalyzer.js';
 import ProjectAnalyzer from '../core/projectAnalyzer.js';
 import CodeGenerator from '../core/codeGenerator.js';
 import MockGenerator from '../core/mockGenerator.js';
+import ComponentWorker from '../core/componentWorker.js';
+import ComponentWorkerV2 from '../core/componentWorkerV2.js';
 import logger from '../utils/logger.js';
 
 // Загрузка переменных окружения
@@ -43,6 +45,8 @@ class ReactGeneratorApp {
     this.projectAnalyzer = new ProjectAnalyzer();
     this.codeGenerator = new CodeGenerator();
     this.mockGenerator = new MockGenerator();
+    this.componentWorker = new ComponentWorker();
+    this.componentWorkerV2 = new ComponentWorkerV2();
     
     // Очередь обработки
     this.processingQueue = [];
@@ -234,7 +238,14 @@ class ReactGeneratorApp {
         });
       }
 
-      res.json({ success: true, data: job });
+      res.json({ 
+        success: true, 
+        data: {
+          ...job,
+          tokens: job.result?.tokens || {},
+          temperature: job.result?.temperature || 0.7
+        }
+      });
     });
 
     // Получение сгенерированного компонента
@@ -257,6 +268,57 @@ class ReactGeneratorApp {
       }
 
       res.json({ success: true, data: job.result });
+    });
+
+    // Получение preview компонента
+    router.get('/components/preview/:id/:componentName', (req, res) => {
+      const { id, componentName } = req.params;
+      const componentPath = path.join('output', id, `${componentName}.tsx`);
+      
+      fs.readFile(componentPath, 'utf8')
+        .then(content => {
+          res.json({
+            success: true,
+            data: {
+              name: componentName,
+              content: content,
+              path: componentPath
+            }
+          });
+        })
+        .catch(error => {
+          res.status(404).json({
+            success: false,
+            error: 'Компонент не найден'
+          });
+        });
+    });
+
+    // Получение списка компонентов для изображения
+    router.get('/components/list/:id', (req, res) => {
+      const { id } = req.params;
+      const outputDir = path.join('output', id);
+      
+      fs.readdir(outputDir)
+        .then(files => {
+          const components = files
+            .filter(file => file.endsWith('.tsx') && file !== 'index.ts')
+            .map(file => ({
+              name: file.replace('.tsx', ''),
+              path: path.join(outputDir, file)
+            }));
+          
+          res.json({
+            success: true,
+            data: components
+          });
+        })
+        .catch(error => {
+          res.status(404).json({
+            success: false,
+            error: 'Папка с компонентами не найдена'
+          });
+        });
     });
 
     // Запуск генерации с параметрами
@@ -408,43 +470,45 @@ class ReactGeneratorApp {
 
       logger.info(`Начинаем обработку: ${job.id}`);
 
-      // 1. Анализ изображения
+      // 1. Анализ изображения через Vision API
       const analysis = await this.visionAnalyzer.analyzeImage(job.imagePath);
       job.analysis = analysis;
 
-      // 2. Анализ проекта (если указан)
-      let projectConfig = null;
-      if (job.projectPath) {
-        projectConfig = this.projectAnalyzer.getGenerationConfig(job.projectPath);
-      } else {
-        // Конфигурация по умолчанию
-        projectConfig = {
-          reactVersion: '18',
-          typescript: true,
-          uiLibrary: 'none',
-          styling: 'css'
-        };
-      }
+      logger.info(`Анализ завершен. Токены: ${analysis.metadata?.tokens?.total || 0}, Температура: ${analysis.metadata?.temperature || 0.7}`);
+
+      // 2. Генерация компонентов через ComponentWorkerV2 (гибридный подход)
+      const componentResult = await this.componentWorkerV2.processStructuredData(analysis, {
+        projectPath: job.projectPath
+      });
 
       // 3. Генерация mock данных
       const mockData = this.mockGenerator.generateComponentMock(analysis, job.options);
       job.mockData = mockData;
 
-      // 4. Загрузка шаблонов
-      await this.codeGenerator.loadTemplates();
+      // 4. Сохранение результатов
+      const outputDir = path.join('output', job.id);
+      await fs.mkdir(outputDir, { recursive: true });
 
-      // 5. Генерация компонента
-      const result = await this.codeGenerator.generateComponent(
-        analysis, 
-        projectConfig, 
-        { ...job.options, mockData }
-      );
+      // Сохранение mock данных
+      const mockPath = path.join(outputDir, 'mock-data.json');
+      await fs.writeFile(mockPath, JSON.stringify(mockData, null, 2), 'utf8');
+
+      // Сохранение структурированных данных
+      const structuredDataPath = path.join(outputDir, 'structured-data.json');
+      await fs.writeFile(structuredDataPath, JSON.stringify(analysis, null, 2), 'utf8');
 
       job.status = 'completed';
-      job.result = result;
+      job.result = {
+        analysis,
+        components: componentResult.components,
+        mockData,
+        outputDir,
+        tokens: analysis.metadata?.tokens || {},
+        temperature: analysis.metadata?.temperature || 0.7
+      };
       job.completedAt = new Date();
 
-      logger.info(`Обработка завершена: ${job.id}`);
+      logger.info(`Обработка завершена: ${job.id}. Создано компонентов: ${componentResult.components.length}`);
 
     } catch (error) {
       logger.error(`Ошибка обработки ${job.id}:`, error);
