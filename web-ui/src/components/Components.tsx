@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Box,
   Typography,
@@ -9,7 +9,14 @@ import {
   Grid,
   Chip,
   IconButton,
-  Alert
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Tabs,
+  Tab,
+  LinearProgress
 } from '@mui/material'
 import {
   Code as CodeIcon,
@@ -19,12 +26,16 @@ import {
   Refresh as RefreshIcon
 } from '@mui/icons-material'
 import ComponentPreview from './ComponentPreview'
+import ComponentRenderer from './ComponentRenderer'
 
 interface Component {
   id: string
   name: string
+  type: string
   createdAt: string
   status: 'completed' | 'failed'
+  quality: number
+  iterations: number
   files: Array<{
     path: string
     content: string
@@ -35,6 +46,22 @@ interface Component {
     typescript: boolean
     uiLibrary: string
     styling: string
+    optimizationUsed: boolean
+    strictEvaluation: boolean
+  }
+}
+
+interface ProcessingJob {
+  id: string
+  imagePath: string
+  status: 'queued' | 'processing' | 'completed' | 'failed'
+  createdAt: string
+  completedAt?: string
+  result?: {
+    components: Component[]
+    analysis: any
+    tokens: any
+    temperature: number
   }
 }
 
@@ -42,8 +69,68 @@ const Components: React.FC = () => {
   const [selectedComponent, setSelectedComponent] = useState<Component | null>(null)
   const [previewFile, setPreviewFile] = useState<string>('')
   const [tabValue, setTabValue] = useState(0)
+  const [components, setComponents] = useState<Component[]>([])
+  const [loading, setLoading] = useState(true)
+  const [originalImage, setOriginalImage] = useState<string>('')
 
-  // Мок данные для демонстрации
+  // Загрузка компонентов из API
+  useEffect(() => {
+    loadComponents()
+  }, [])
+
+  const loadComponents = async () => {
+    try {
+      setLoading(true)
+      // Получаем список завершенных задач
+      const response = await fetch('/api/images/status')
+      const data = await response.json()
+      
+      if (data.success) {
+        const completedJobs = data.data.filter((job: ProcessingJob) => job.status === 'completed')
+        const allComponents: Component[] = []
+        
+        // Преобразуем задачи в компоненты
+        for (const job of completedJobs) {
+          if (job.result && job.result.components) {
+            // Создаем компонент для каждой задачи
+            const mainComponent: Component = {
+              id: job.id,
+              name: `Main${job.id}`,
+              type: 'Main',
+              createdAt: job.createdAt,
+              status: 'completed',
+              quality: 0.85, // Значение по умолчанию
+              iterations: 5, // Значение по умолчанию
+              files: job.result.components.map((comp: any) => ({
+                name: comp.name,
+                path: comp.path,
+                content: '', // Будет загружено при необходимости
+                type: comp.type
+              })),
+              metadata: {
+                reactVersion: '18.0.0',
+                typescript: true,
+                uiLibrary: 'Material-UI',
+                styling: 'CSS Modules',
+                optimizationUsed: true,
+                strictEvaluation: true
+              }
+            }
+            
+            allComponents.push(mainComponent)
+          }
+        }
+        
+        setComponents(allComponents)
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки компонентов:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Мок данные для демонстрации (если API недоступен)
   const mockComponents: Component[] = [
     {
       id: '1',
@@ -90,10 +177,56 @@ const Components: React.FC = () => {
     }
   ]
 
-  const handleViewComponent = (component: Component) => {
+  const handleViewComponent = async (component: Component) => {
     setSelectedComponent(component)
-    setPreviewFile(component.files[0]?.content || '')
     setTabValue(0)
+    
+    // Загружаем содержимое первого файла
+    console.log('Загружаем компонент:', component.id, 'файлы:', component.files)
+    console.log('Первый файл:', component.files[0])
+    if (component.files.length > 0 && component.files[0] && component.files[0].name) {
+      try {
+        const url = `/api/components/preview/${component.id}/${component.files[0].name}`
+        console.log('Запрашиваем URL:', url)
+        const fileResponse = await fetch(url)
+        console.log('Ответ сервера:', fileResponse.status, fileResponse.ok)
+        if (fileResponse.ok) {
+          const fileData = await fileResponse.json()
+          console.log('Данные файла:', fileData)
+          if (fileData.success) {
+            setPreviewFile(fileData.data.content)
+            console.log('Содержимое файла установлено')
+          }
+        } else {
+          console.error('Ошибка HTTP:', fileResponse.status, fileResponse.statusText)
+          setPreviewFile('// Ошибка HTTP: ' + fileResponse.status)
+        }
+      } catch (error) {
+        console.error('Ошибка загрузки файла:', error)
+        setPreviewFile('// Ошибка загрузки файла: ' + error.message)
+      }
+    } else {
+      console.log('Файлы не найдены или имя файла отсутствует')
+      setPreviewFile('// Файл не найден')
+    }
+    
+    // Загружаем оригинальное изображение для сравнения
+    try {
+      const imageUrl = `/api/images/original/${component.id}`
+      console.log('Загружаем изображение:', imageUrl)
+      const imageResponse = await fetch(imageUrl)
+      console.log('Ответ изображения:', imageResponse.status, imageResponse.ok)
+      if (imageResponse.ok) {
+        const imageBlob = await imageResponse.blob()
+        const imageObjectUrl = URL.createObjectURL(imageBlob)
+        setOriginalImage(imageObjectUrl)
+        console.log('Изображение загружено успешно')
+      } else {
+        console.error('Ошибка загрузки изображения:', imageResponse.status, imageResponse.statusText)
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки оригинального изображения:', error)
+    }
   }
 
   const handleCloseDialog = () => {
@@ -101,10 +234,23 @@ const Components: React.FC = () => {
     setPreviewFile('')
   }
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = async (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue)
-    if (selectedComponent) {
-      setPreviewFile(selectedComponent.files[newValue]?.content || '')
+    if (selectedComponent && selectedComponent.files[newValue] && selectedComponent.files[newValue].name) {
+      try {
+        const fileResponse = await fetch(`/api/components/preview/${selectedComponent.id}/${selectedComponent.files[newValue].name}`)
+        if (fileResponse.ok) {
+          const fileData = await fileResponse.json()
+          if (fileData.success) {
+            setPreviewFile(fileData.data.content)
+          }
+        }
+      } catch (error) {
+        console.error('Ошибка загрузки файла:', error)
+        setPreviewFile('// Ошибка загрузки файла')
+      }
+    } else {
+      setPreviewFile('// Файл не найден')
     }
   }
 
@@ -152,7 +298,14 @@ const Components: React.FC = () => {
         </Button>
       </Box>
 
-      {mockComponents.length === 0 ? (
+      {loading ? (
+        <Box>
+          <LinearProgress />
+          <Typography variant="body1" sx={{ mt: 2 }}>
+            Загрузка компонентов...
+          </Typography>
+        </Box>
+      ) : (components.length === 0 ? (
         <Alert severity="info">
           <Typography variant="body1">
             Компоненты не найдены. Загрузите изображения для генерации компонентов.
@@ -160,7 +313,7 @@ const Components: React.FC = () => {
         </Alert>
       ) : (
         <Grid container spacing={3}>
-          {mockComponents.map((component) => (
+          {components.map((component) => (
             <Grid item xs={12} sm={6} md={4} key={component.id}>
               <Card>
                 <CardContent>
@@ -177,24 +330,30 @@ const Components: React.FC = () => {
 
                   <Box display="flex" flexWrap="wrap" gap={0.5} mb={2}>
                     <Chip
-                      label={`React ${component.metadata.reactVersion}`}
+                      label={`${component.type}`}
                       size="small"
                       color="primary"
                       variant="outlined"
                     />
-                    {component.metadata.typescript && (
+                    <Chip
+                      label={`Качество: ${(component.quality * 100).toFixed(1)}%`}
+                      size="small"
+                      color={component.quality > 0.8 ? 'success' : component.quality > 0.6 ? 'warning' : 'error'}
+                      variant="outlined"
+                    />
+                    <Chip
+                      label={`Итераций: ${component.iterations}`}
+                      size="small"
+                      variant="outlined"
+                    />
+                    {component.metadata?.optimizationUsed && (
                       <Chip
-                        label="TypeScript"
+                        label="Оптимизация"
                         size="small"
                         color="secondary"
                         variant="outlined"
                       />
                     )}
-                    <Chip
-                      label={component.metadata.styling}
-                      size="small"
-                      variant="outlined"
-                    />
                   </Box>
 
                   <Typography variant="body2" color="text.secondary">
@@ -229,7 +388,7 @@ const Components: React.FC = () => {
             </Grid>
           ))}
         </Grid>
-      )}
+      ))}
 
       {/* Диалог просмотра компонента */}
       <Dialog
@@ -254,9 +413,11 @@ const Components: React.FC = () => {
                 variant="scrollable"
                 scrollButtons="auto"
               >
+                <Tab label="Код" icon={<CodeIcon />} />
+                <Tab label="Сравнение" icon={<ViewIcon />} />
                 {selectedComponent.files.map((file, index) => (
                   <Tab
-                    key={index}
+                    key={index + 2}
                     label={file.path}
                     icon={<CodeIcon />}
                   />
@@ -264,16 +425,122 @@ const Components: React.FC = () => {
               </Tabs>
               
               <Box sx={{ mt: 2 }}>
-                <pre style={{ 
-                  background: '#f5f5f5', 
-                  padding: '16px', 
-                  borderRadius: '4px',
-                  overflow: 'auto',
-                  fontSize: '14px',
-                  fontFamily: 'Monaco, Menlo, monospace'
-                }}>
-                  {previewFile}
-                </pre>
+                {tabValue === 0 && (
+                  <pre style={{ 
+                    background: '#f5f5f5', 
+                    padding: '16px', 
+                    borderRadius: '4px',
+                    overflow: 'auto',
+                    fontSize: '14px',
+                    fontFamily: 'Monaco, Menlo, monospace'
+                  }}>
+                    {previewFile}
+                  </pre>
+                )}
+                
+                {tabValue === 1 && (
+                  <Box>
+                    <Typography variant="h6" gutterBottom>
+                      Сравнение с оригиналом
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Оригинальное изображение
+                        </Typography>
+                        {originalImage ? (
+                          <Box 
+                            sx={{ 
+                              height: '400px', 
+                              border: '1px solid #ddd', 
+                              borderRadius: '4px',
+                              overflow: 'hidden',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: '#f9f9f9'
+                            }}
+                          >
+                            <img 
+                              src={originalImage} 
+                              alt="Оригинал" 
+                              style={{ 
+                                maxWidth: '100%', 
+                                maxHeight: '100%', 
+                                objectFit: 'contain'
+                              }} 
+                            />
+                          </Box>
+                        ) : (
+                          <Box 
+                            sx={{ 
+                              height: '400px', 
+                              border: '1px dashed #ccc', 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'center',
+                              borderRadius: '4px'
+                            }}
+                          >
+                            <Typography color="text.secondary">
+                              Загрузка изображения...
+                            </Typography>
+                          </Box>
+                        )}
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Сгенерированный компонент
+                        </Typography>
+                        {selectedComponent.files.length > 0 && selectedComponent.files[0] && selectedComponent.files[0].name ? (
+                          <ComponentRenderer
+                            componentId={selectedComponent.id}
+                            componentName={selectedComponent.files[0].name}
+                            height="400px"
+                          />
+                        ) : (
+                          <Box sx={{ 
+                            height: '400px',
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            backgroundColor: '#f9f9f9'
+                          }}>
+                            <Typography color="text.secondary">
+                              Компонент не найден
+                            </Typography>
+                          </Box>
+                        )}
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Качество: {(selectedComponent.quality * 100).toFixed(1)}%
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Итераций оптимизации: {selectedComponent.iterations}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Тип: {selectedComponent.type}
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    </Grid>
+                  </Box>
+                )}
+                
+                {tabValue > 1 && (
+                  <pre style={{ 
+                    background: '#f5f5f5', 
+                    padding: '16px', 
+                    borderRadius: '4px',
+                    overflow: 'auto',
+                    fontSize: '14px',
+                    fontFamily: 'Monaco, Menlo, monospace'
+                  }}>
+                    {selectedComponent.files[tabValue - 2]?.content || ''}
+                  </pre>
+                )}
               </Box>
             </Box>
           )}

@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
+import fs from 'fs/promises';
 
 // Импорт модулей
 import FileWatcher from '../core/fileWatcher.js';
@@ -15,6 +16,7 @@ import CodeGenerator from '../core/codeGenerator.js';
 import MockGenerator from '../core/mockGenerator.js';
 import ComponentWorker from '../core/componentWorker.js';
 import ComponentWorkerV2 from '../core/componentWorkerV2.js';
+import ComponentWorkerV3 from '../core/componentWorkerV3.js';
 import logger from '../utils/logger.js';
 
 // Загрузка переменных окружения
@@ -47,6 +49,7 @@ class ReactGeneratorApp {
     this.mockGenerator = new MockGenerator();
     this.componentWorker = new ComponentWorker();
     this.componentWorkerV2 = new ComponentWorkerV2();
+    this.componentWorkerV3 = new ComponentWorkerV3();
     
     // Очередь обработки
     this.processingQueue = [];
@@ -226,6 +229,26 @@ class ReactGeneratorApp {
       }
     });
 
+    // Получение всех задач
+    router.get('/images/status', (req, res) => {
+      try {
+        res.json({ 
+          success: true, 
+          data: this.processingQueue.map(job => ({
+            ...job,
+            tokens: job.result?.tokens || {},
+            temperature: job.result?.temperature || 0.7
+          }))
+        });
+      } catch (error) {
+        logger.error('Ошибка получения списка задач:', error);
+        res.status(500).json({ 
+          success: false, 
+          error: 'Ошибка получения списка задач' 
+        });
+      }
+    });
+
     // Статус обработки изображения
     router.get('/images/status/:id', (req, res) => {
       const { id } = req.params;
@@ -294,6 +317,80 @@ class ReactGeneratorApp {
         });
     });
 
+    // Получение чистого кода компонента
+    router.get('/components/clean/:id/:componentName', (req, res) => {
+      const { id, componentName } = req.params;
+      const componentPath = path.join('output', id, `${componentName}.tsx`);
+      
+      fs.readFile(componentPath, 'utf8')
+        .then(content => {
+          // Очищаем код от import/export и template literals
+          const cleanCode = content
+            .replace(/import React from 'react';/g, '// React уже загружен')
+            .replace(/export default [^;]+;/g, '')
+            .replace(/className={\`([^`]+)\${([^}]+)}\`}/g, 'className={"$1" + $2}')
+            .replace(/className={\`([^`]+)\`}/g, 'className={"$1"}');
+          
+          res.json({
+            success: true,
+            data: {
+              name: componentName,
+              code: cleanCode,
+              path: componentPath
+            }
+          });
+        })
+        .catch(error => {
+          res.status(404).json({
+            success: false,
+            error: 'Компонент не найден'
+          });
+        });
+    });
+
+    // Рендеринг компонента в HTML (упрощенная версия для совместимости)
+    router.get('/components/render/:id/:componentName', (req, res) => {
+      const { id, componentName } = req.params;
+      
+      // Простой HTML с сообщением о том, что используется новый рендерер
+      const html = `
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${componentName}</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background-color: #f5f5f5;
+        }
+        .component-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="component-container">
+        <h2>${componentName}</h2>
+        <p>Компонент теперь рендерится через ComponentRenderer</p>
+        <p>Используйте веб-интерфейс для просмотра</p>
+    </div>
+</body>
+</html>`;
+      
+      res.setHeader('Content-Type', 'text/html');
+      res.send(html);
+    });
+
     // Получение списка компонентов для изображения
     router.get('/components/list/:id', (req, res) => {
       const { id } = req.params;
@@ -317,6 +414,35 @@ class ReactGeneratorApp {
           res.status(404).json({
             success: false,
             error: 'Папка с компонентами не найдена'
+          });
+        });
+    });
+
+    // Получение оригинального изображения
+    router.get('/images/original/:id', (req, res) => {
+      const { id } = req.params;
+      const job = this.processingQueue.find(j => j.id === id);
+      
+      if (!job) {
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Задача не найдена' 
+        });
+      }
+
+      const imagePath = job.imagePath;
+      
+      // Проверяем существование файла
+      fs.access(imagePath)
+        .then(() => {
+          // Отправляем изображение
+          res.sendFile(path.resolve(imagePath));
+        })
+        .catch(error => {
+          logger.error('Ошибка доступа к изображению:', error);
+          res.status(404).json({ 
+            success: false, 
+            error: 'Изображение не найдено' 
           });
         });
     });
@@ -476,8 +602,8 @@ class ReactGeneratorApp {
 
       logger.info(`Анализ завершен. Токены: ${analysis.metadata?.tokens?.total || 0}, Температура: ${analysis.metadata?.temperature || 0.7}`);
 
-      // 2. Генерация компонентов через ComponentWorkerV2 (гибридный подход)
-      const componentResult = await this.componentWorkerV2.processStructuredData(analysis, {
+      // 2. Генерация компонентов через ComponentWorkerV3 (улучшенный гибридный подход)
+      const componentResult = await this.componentWorkerV3.processStructuredData(analysis, {
         projectPath: job.projectPath
       });
 
@@ -589,6 +715,9 @@ class ReactGeneratorApp {
       logger.debug('Анализ проектов...');
       await this.projectAnalyzer.analyzeAllProjects();
       
+      logger.debug('Загрузка существующих задач...');
+      await this.loadExistingTasks();
+      
       logger.debug('Запуск FileWatcher...');
       this.fileWatcher.start();
       logger.info(`FileWatcher запущен для папки: ./incoming`);
@@ -616,6 +745,108 @@ class ReactGeneratorApp {
       logger.error('Ошибка запуска приложения:', error);
       logger.error('Stack trace:', error.stack);
       process.exit(1);
+    }
+  }
+
+  /**
+   * Загрузка существующих задач из папки output
+   */
+  async loadExistingTasks() {
+    try {
+      const outputDir = 'output';
+      const incomingDir = 'incoming';
+      
+      // Проверяем существование папки output
+      try {
+        await fs.access(outputDir);
+      } catch (error) {
+        logger.debug('Папка output не существует, пропускаем загрузку задач');
+        return;
+      }
+
+      // Получаем список папок в output
+      const entries = await fs.readdir(outputDir, { withFileTypes: true });
+      const taskDirs = entries.filter(entry => entry.isDirectory());
+      
+      logger.info(`Найдено ${taskDirs.length} существующих задач в папке output`);
+      
+      for (const taskDir of taskDirs) {
+        const taskId = taskDir.name;
+        const taskPath = path.join(outputDir, taskId);
+        
+        try {
+          // Проверяем, есть ли файлы компонентов
+          const files = await fs.readdir(taskPath);
+          const hasComponents = files.some(file => file.endsWith('.tsx'));
+          
+          if (hasComponents) {
+            // Ищем оригинальное изображение в папке incoming
+            let imagePath = null;
+            let fileName = null;
+            
+            try {
+              const incomingFiles = await fs.readdir(incomingDir);
+              // Ищем файл, который может соответствовать этой задаче
+              // Проверяем различные варианты имен
+              const possibleNames = [
+                `${taskId}.png`,
+                `${taskId}.jpg`,
+                `${taskId}.jpeg`,
+                `${taskId}.webp`
+              ];
+              
+              for (const possibleName of possibleNames) {
+                if (incomingFiles.includes(possibleName)) {
+                  imagePath = path.join(incomingDir, possibleName);
+                  fileName = possibleName;
+                  break;
+                }
+              }
+              
+              // Если не нашли по ID, берем любой PNG файл
+              if (!imagePath) {
+                const pngFiles = incomingFiles.filter(file => file.endsWith('.png'));
+                if (pngFiles.length > 0) {
+                  imagePath = path.join(incomingDir, pngFiles[0]);
+                  fileName = pngFiles[0];
+                }
+              }
+            } catch (error) {
+              logger.warn(`Ошибка поиска изображения для ${taskId}:`, error.message);
+            }
+            
+            // Создаем задачу для существующего компонента
+            const job = {
+              id: taskId,
+              imagePath: imagePath || path.join('incoming', `${taskId}.png`),
+              fileName: fileName || `${taskId}.png`,
+              status: 'completed',
+              createdAt: new Date(),
+              result: {
+                components: files
+                  .filter(file => file.endsWith('.tsx'))
+                  .map(file => ({
+                    name: file.replace('.tsx', ''),
+                    path: path.join(taskPath, file),
+                    type: 'tsx'
+                  })),
+                tokens: {},
+                temperature: 0.7
+              }
+            };
+            
+            this.processingQueue.push(job);
+            logger.debug(`Загружена задача: ${taskId}, изображение: ${fileName || 'не найдено'}`);
+          }
+        } catch (error) {
+          logger.warn(`Ошибка загрузки задачи ${taskId}:`, error.message);
+        }
+      }
+      
+      logger.info(`Загружено ${this.processingQueue.length} существующих задач`);
+      
+    } catch (error) {
+      logger.error('Ошибка загрузки существующих задач:', error);
     }
   }
 

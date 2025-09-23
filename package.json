@@ -41,7 +41,7 @@
     "winston": "^3.11.0",
     "dotenv": "^16.3.1",
     "joi": "^17.11.0",
-    "glob": "^10.3.10"
+    "glob": "7.2.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
