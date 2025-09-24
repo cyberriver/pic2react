@@ -32,15 +32,33 @@ interface Component {
   id: string
   name: string
   type: string
+  taskId: string
   createdAt: string
   status: 'completed' | 'failed'
   quality: number
   iterations: number
   files: Array<{
+    name: string
     path: string
     content: string
     type: string
   }>
+  metadata: {
+    reactVersion: string
+    typescript: boolean
+    uiLibrary: string
+    styling: string
+    optimizationUsed: boolean
+    strictEvaluation: boolean
+  }
+}
+
+interface TaskGroup {
+  id: string
+  createdAt: string
+  components: Component[]
+  averageQuality: number
+  totalIterations: number
   metadata: {
     reactVersion: string
     typescript: boolean
@@ -69,9 +87,10 @@ const Components: React.FC = () => {
   const [selectedComponent, setSelectedComponent] = useState<Component | null>(null)
   const [previewFile, setPreviewFile] = useState<string>('')
   const [tabValue, setTabValue] = useState(0)
-  const [components, setComponents] = useState<Component[]>([])
+  const [taskGroups, setTaskGroups] = useState<TaskGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [originalImage, setOriginalImage] = useState<string>('')
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
 
   // Загрузка компонентов из API
   useEffect(() => {
@@ -82,31 +101,54 @@ const Components: React.FC = () => {
     try {
       setLoading(true)
       // Получаем список завершенных задач
-      const response = await fetch('/api/images/status')
+      const response = await fetch('http://localhost:3001/api/images/status')
       const data = await response.json()
       
       if (data.success) {
         const completedJobs = data.data.filter((job: ProcessingJob) => job.status === 'completed')
-        const allComponents: Component[] = []
+        const taskGroups: TaskGroup[] = []
         
-        // Преобразуем задачи в компоненты
+        // Преобразуем задачи в группы
         for (const job of completedJobs) {
           if (job.result && job.result.components) {
-            // Создаем компонент для каждой задачи
-            const mainComponent: Component = {
-              id: job.id,
-              name: `Main${job.id}`,
-              type: 'Main',
-              createdAt: job.createdAt,
-              status: 'completed',
-              quality: 0.85, // Значение по умолчанию
-              iterations: 5, // Значение по умолчанию
-              files: job.result.components.map((comp: any) => ({
+            const components: Component[] = []
+            
+            // Создаем отдельный компонент для каждого файла
+            for (const comp of job.result.components) {
+              const component: Component = {
+                id: `${job.id}-${comp.name}`,
                 name: comp.name,
-                path: comp.path,
-                content: '', // Будет загружено при необходимости
-                type: comp.type
-              })),
+                type: determineComponentType(comp.name),
+                taskId: job.id,
+                createdAt: job.createdAt,
+                status: 'completed',
+                quality: 0.85, // Значение по умолчанию
+                iterations: 5, // Значение по умолчанию
+                files: [{
+                  name: comp.name,
+                  path: comp.path,
+                  content: '', // Будет загружено при необходимости
+                  type: comp.type
+                }],
+                metadata: {
+                  reactVersion: '18.0.0',
+                  typescript: true,
+                  uiLibrary: 'Material-UI',
+                  styling: 'CSS Modules',
+                  optimizationUsed: true,
+                  strictEvaluation: true
+                }
+              }
+              components.push(component)
+            }
+            
+            // Создаем группу задач
+            const taskGroup: TaskGroup = {
+              id: job.id,
+              createdAt: job.createdAt,
+              components: components,
+              averageQuality: components.reduce((sum, comp) => sum + comp.quality, 0) / components.length,
+              totalIterations: components.reduce((sum, comp) => sum + comp.iterations, 0),
               metadata: {
                 reactVersion: '18.0.0',
                 typescript: true,
@@ -117,17 +159,50 @@ const Components: React.FC = () => {
               }
             }
             
-            allComponents.push(mainComponent)
+            taskGroups.push(taskGroup)
           }
         }
         
-        setComponents(allComponents)
+        setTaskGroups(taskGroups)
       }
     } catch (error) {
       console.error('Ошибка загрузки компонентов:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  // Функция для определения типа компонента по имени
+  const determineComponentType = (name: string): string => {
+    const lowerName = name.toLowerCase()
+    if (lowerName.includes('chart')) return 'Chart'
+    if (lowerName.includes('table')) return 'Table'
+    if (lowerName.includes('card')) return 'Card'
+    if (lowerName.includes('button')) return 'Button'
+    if (lowerName.includes('form')) return 'Form'
+    if (lowerName.includes('input')) return 'Input'
+    if (lowerName.includes('header')) return 'Header'
+    if (lowerName.includes('nav')) return 'Navigation'
+    if (lowerName.includes('sidebar')) return 'Sidebar'
+    if (lowerName.includes('image')) return 'Image'
+    if (lowerName.includes('text')) return 'Text'
+    if (lowerName.includes('container')) return 'Container'
+    return 'Component'
+  }
+
+  // Функции для работы с аккордеоном
+  const toggleTask = (taskId: string) => {
+    const newExpandedTasks = new Set(expandedTasks)
+    if (newExpandedTasks.has(taskId)) {
+      newExpandedTasks.delete(taskId)
+    } else {
+      newExpandedTasks.add(taskId)
+    }
+    setExpandedTasks(newExpandedTasks)
+  }
+
+  const isTaskExpanded = (taskId: string) => {
+    return expandedTasks.has(taskId)
   }
 
   // Мок данные для демонстрации (если API недоступен)
@@ -182,11 +257,12 @@ const Components: React.FC = () => {
     setTabValue(0)
     
     // Загружаем содержимое первого файла
-    console.log('Загружаем компонент:', component.id, 'файлы:', component.files)
+    console.log('Загружаем компонент:', component.id, 'taskId:', component.taskId, 'файлы:', component.files)
     console.log('Первый файл:', component.files[0])
     if (component.files.length > 0 && component.files[0] && component.files[0].name) {
       try {
-        const url = `/api/components/preview/${component.id}/${component.files[0].name}`
+        // Используем taskId вместо component.id для API запросов
+        const url = `/api/components/preview/${component.taskId}/${component.files[0].name}`
         console.log('Запрашиваем URL:', url)
         const fileResponse = await fetch(url)
         console.log('Ответ сервера:', fileResponse.status, fileResponse.ok)
@@ -212,7 +288,8 @@ const Components: React.FC = () => {
     
     // Загружаем оригинальное изображение для сравнения
     try {
-      const imageUrl = `/api/images/original/${component.id}`
+      // Используем taskId вместо component.id для API запросов
+      const imageUrl = `/api/images/original/${component.taskId}`
       console.log('Загружаем изображение:', imageUrl)
       const imageResponse = await fetch(imageUrl)
       console.log('Ответ изображения:', imageResponse.status, imageResponse.ok)
@@ -238,7 +315,8 @@ const Components: React.FC = () => {
     setTabValue(newValue)
     if (selectedComponent && selectedComponent.files[newValue] && selectedComponent.files[newValue].name) {
       try {
-        const fileResponse = await fetch(`/api/components/preview/${selectedComponent.id}/${selectedComponent.files[newValue].name}`)
+        // Используем taskId вместо component.id для API запросов
+        const fileResponse = await fetch(`http://localhost:3001/api/components/preview/${selectedComponent.taskId}/${selectedComponent.files[newValue].name}`)
         if (fileResponse.ok) {
           const fileData = await fileResponse.json()
           if (fileData.success) {
@@ -305,7 +383,7 @@ const Components: React.FC = () => {
             Загрузка компонентов...
           </Typography>
         </Box>
-      ) : (components.length === 0 ? (
+      ) : (taskGroups.length === 0 ? (
         <Alert severity="info">
           <Typography variant="body1">
             Компоненты не найдены. Загрузите изображения для генерации компонентов.
@@ -313,40 +391,43 @@ const Components: React.FC = () => {
         </Alert>
       ) : (
         <Grid container spacing={3}>
-          {components.map((component) => (
-            <Grid item xs={12} sm={6} md={4} key={component.id}>
+          {taskGroups.map((taskGroup) => (
+            <Grid item xs={12} key={taskGroup.id}>
               <Card>
                 <CardContent>
-                  <Box display="flex" alignItems="center" mb={2}>
-                    <CodeIcon color="primary" sx={{ mr: 1 }} />
-                    <Typography variant="h6" component="div">
-                      {component.name}
-                    </Typography>
+                  <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+                    <Box display="flex" alignItems="center">
+                      <CodeIcon color="primary" sx={{ mr: 1 }} />
+                      <Typography variant="h6" component="div">
+                        Task: {taskGroup.id.substring(0, 8)}... ({taskGroup.components.length} компонентов)
+                      </Typography>
+                    </Box>
+                    <Button
+                      size="small"
+                      onClick={() => toggleTask(taskGroup.id)}
+                      variant="outlined"
+                    >
+                      {isTaskExpanded(taskGroup.id) ? 'Свернуть' : 'Развернуть'}
+                    </Button>
                   </Box>
                   
                   <Typography variant="body2" color="text.secondary" paragraph>
-                    Создан: {new Date(component.createdAt).toLocaleDateString('ru-RU')}
+                    Создан: {new Date(taskGroup.createdAt).toLocaleDateString('ru-RU')}
                   </Typography>
 
                   <Box display="flex" flexWrap="wrap" gap={0.5} mb={2}>
                     <Chip
-                      label={`${component.type}`}
+                      label={`Среднее качество: ${(taskGroup.averageQuality * 100).toFixed(1)}%`}
                       size="small"
-                      color="primary"
+                      color={taskGroup.averageQuality > 0.8 ? 'success' : taskGroup.averageQuality > 0.6 ? 'warning' : 'error'}
                       variant="outlined"
                     />
                     <Chip
-                      label={`Качество: ${(component.quality * 100).toFixed(1)}%`}
-                      size="small"
-                      color={component.quality > 0.8 ? 'success' : component.quality > 0.6 ? 'warning' : 'error'}
-                      variant="outlined"
-                    />
-                    <Chip
-                      label={`Итераций: ${component.iterations}`}
+                      label={`Всего итераций: ${taskGroup.totalIterations}`}
                       size="small"
                       variant="outlined"
                     />
-                    {component.metadata?.optimizationUsed && (
+                    {taskGroup.metadata?.optimizationUsed && (
                       <Chip
                         label="Оптимизация"
                         size="small"
@@ -356,34 +437,67 @@ const Components: React.FC = () => {
                     )}
                   </Box>
 
-                  <Typography variant="body2" color="text.secondary">
-                    Файлов: {component.files.length}
-                  </Typography>
+                  {isTaskExpanded(taskGroup.id) && (
+                    <Box mt={2}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Компоненты:
+                      </Typography>
+                      <Grid container spacing={2}>
+                        {taskGroup.components.map((component) => (
+                          <Grid item xs={12} sm={6} md={4} key={component.id}>
+                            <Card variant="outlined">
+                              <CardContent>
+                                <Box display="flex" alignItems="center" mb={1}>
+                                  <CodeIcon color="primary" sx={{ mr: 1, fontSize: 20 }} />
+                                  <Typography variant="subtitle1">
+                                    {component.name}
+                                  </Typography>
+                                </Box>
+                                
+                                <Box display="flex" flexWrap="wrap" gap={0.5} mb={1}>
+                                  <Chip
+                                    label={component.type}
+                                    size="small"
+                                    color="primary"
+                                    variant="outlined"
+                                  />
+                                  <Chip
+                                    label={`${(component.quality * 100).toFixed(1)}%`}
+                                    size="small"
+                                    color={component.quality > 0.8 ? 'success' : component.quality > 0.6 ? 'warning' : 'error'}
+                                    variant="outlined"
+                                  />
+                                  <Chip
+                                    label={`${component.iterations} итер.`}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                </Box>
+                              </CardContent>
+                              
+                              <CardActions>
+                                <Button
+                                  size="small"
+                                  startIcon={<ViewIcon />}
+                                  onClick={() => handleViewComponent(component)}
+                                >
+                                  Просмотр
+                                </Button>
+                                <Button
+                                  size="small"
+                                  startIcon={<DownloadIcon />}
+                                  onClick={() => handleDownload(component)}
+                                >
+                                  Скачать
+                                </Button>
+                              </CardActions>
+                            </Card>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Box>
+                  )}
                 </CardContent>
-
-                <CardActions>
-                  <Button
-                    size="small"
-                    startIcon={<ViewIcon />}
-                    onClick={() => handleViewComponent(component)}
-                  >
-                    Просмотр
-                  </Button>
-                  <Button
-                    size="small"
-                    startIcon={<DownloadIcon />}
-                    onClick={() => handleDownload(component)}
-                  >
-                    Скачать
-                  </Button>
-                  <IconButton
-                    size="small"
-                    onClick={() => handleDelete(component.id)}
-                    color="error"
-                  >
-                    <DeleteIcon />
-                  </IconButton>
-                </CardActions>
               </Card>
             </Grid>
           ))}
@@ -494,7 +608,7 @@ const Components: React.FC = () => {
                         </Typography>
                         {selectedComponent.files.length > 0 && selectedComponent.files[0] && selectedComponent.files[0].name ? (
                           <ComponentRenderer
-                            componentId={selectedComponent.id}
+                            componentId={selectedComponent.taskId}
                             componentName={selectedComponent.files[0].name}
                             height="400px"
                           />

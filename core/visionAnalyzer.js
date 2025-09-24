@@ -129,6 +129,8 @@ class VisionAnalyzer {
           max_tokens: this.maxTokens,
           temperature: this.temperature
         });
+        
+        logger.info('🤖 Ответ от OpenRouter:', response.choices[0].message.content);
 
         const content = response.choices[0].message.content;
         logger.debug('Получен ответ от Vision API:', content.substring(0, 500) + '...');
@@ -212,6 +214,8 @@ class VisionAnalyzer {
    * Постобработка результатов анализа
    */
   postprocessAnalysis(analysis, imagePath) {
+    logger.info('🔍 Анализ от AI:', JSON.stringify(analysis, null, 2));
+    
     const result = {
       imageId: uuidv4(),
       imagePath: imagePath,
@@ -227,6 +231,9 @@ class VisionAnalyzer {
         processingTime: Date.now()
       }
     };
+    
+    logger.info(`📊 Найдено элементов: ${result.elements.length}`);
+    logger.info(`🎯 Элементы:`, result.elements.map(el => `${el.type} (${el.id})`).join(', '));
 
     // Валидация и очистка элементов
     result.elements = result.elements.map((element, index) => ({

@@ -17,6 +17,7 @@ import MockGenerator from '../core/mockGenerator.js';
 import ComponentWorker from '../core/componentWorker.js';
 import ComponentWorkerV2 from '../core/componentWorkerV2.js';
 import ComponentWorkerV3 from '../core/componentWorkerV3.js';
+import BackgroundJSTransformer from '../core/backgroundJSTransformer.js';
 import logger from '../utils/logger.js';
 
 // Загрузка переменных окружения
@@ -50,6 +51,7 @@ class ReactGeneratorApp {
     this.componentWorker = new ComponentWorker();
     this.componentWorkerV2 = new ComponentWorkerV2();
     this.componentWorkerV3 = new ComponentWorkerV3();
+    this.backgroundJSTransformer = new BackgroundJSTransformer();
     
     // Очередь обработки
     this.processingQueue = [];
@@ -69,13 +71,22 @@ class ReactGeneratorApp {
         fileSize: 10 * 1024 * 1024 // 10MB
       },
       fileFilter: (req, file, cb) => {
+        logger.info('Multer fileFilter вызван для файла:', file.originalname);
+        logger.info('MIME type:', file.mimetype);
+        logger.info('Field name:', file.fieldname);
+        
         const allowedTypes = /jpeg|jpg|png|webp/;
         const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
         const mimetype = allowedTypes.test(file.mimetype);
         
+        logger.info('Extension check:', extname);
+        logger.info('MIME type check:', mimetype);
+        
         if (mimetype && extname) {
+          logger.info('Файл принят multer');
           return cb(null, true);
         } else {
+          logger.error('Файл отклонен multer:', file.originalname);
           cb(new Error('Только изображения (JPEG, JPG, PNG, WEBP) разрешены'));
         }
       }
@@ -177,9 +188,31 @@ class ReactGeneratorApp {
     });
 
     // Загрузка изображения
-    router.post('/images/upload', this.upload.single('image'), async (req, res) => {
+    router.post('/images/upload', (req, res, next) => {
+      logger.info('Middleware multer вызван');
+      logger.info('Content-Type:', req.headers['content-type']);
+      logger.info('Content-Length:', req.headers['content-length']);
+      
+      this.upload.single('image')(req, res, (err) => {
+        if (err) {
+          logger.error('Ошибка multer:', err.message);
+          return res.status(400).json({ 
+            success: false, 
+            error: err.message 
+          });
+        }
+        logger.info('Multer успешно обработал запрос');
+        next();
+      });
+    }, async (req, res) => {
       try {
+        logger.info('Запрос на загрузку файла получен');
+        logger.info('req.file:', req.file);
+        logger.info('req.body:', req.body);
+        logger.info('req.files:', req.files);
+        
         if (!req.file) {
+          logger.error('Файл не найден в запросе');
           return res.status(400).json({ 
             success: false, 
             error: 'Файл изображения не найден' 
@@ -247,6 +280,15 @@ class ReactGeneratorApp {
           error: 'Ошибка получения списка задач' 
         });
       }
+    });
+
+    // Получение статуса фонового преобразования
+    router.get('/js-transformer/status', (req, res) => {
+      const status = this.backgroundJSTransformer.getStatus();
+      res.json({
+        success: true,
+        data: status
+      });
     });
 
     // Статус обработки изображения
@@ -317,49 +359,229 @@ class ReactGeneratorApp {
         });
     });
 
-    // Получение чистого кода компонента
+    // Получение чистого JavaScript кода компонента
     router.get('/components/clean/:id/:componentName', (req, res) => {
       const { id, componentName } = req.params;
-      const componentPath = path.join('output', id, `${componentName}.tsx`);
       
-      fs.readFile(componentPath, 'utf8')
-        .then(content => {
-          // Очищаем код от import/export и template literals
-          const cleanCode = content
-            .replace(/import React from 'react';/g, '// React уже загружен')
-            .replace(/export default [^;]+;/g, '')
-            .replace(/className={\`([^`]+)\${([^}]+)}\`}/g, 'className={"$1" + $2}')
-            .replace(/className={\`([^`]+)\`}/g, 'className={"$1"}');
-          
+      // Сначала пытаемся найти готовый .js файл
+      const jsPath = path.join('output', id, `${componentName}.js`);
+      const tsxPath = path.join('output', id, `${componentName}.tsx`);
+      
+      // Пытаемся прочитать готовый JavaScript файл
+      fs.readFile(jsPath, 'utf8')
+        .then(jsCode => {
+          logger.debug(`✅ Используем готовый JavaScript файл: ${jsPath}`);
           res.json({
             success: true,
             data: {
               name: componentName,
-              code: cleanCode,
-              path: componentPath
+              code: jsCode,
+              path: jsPath,
+              type: 'javascript'
             }
           });
         })
-        .catch(error => {
-          res.status(404).json({
-            success: false,
-            error: 'Компонент не найден'
-          });
+        .catch(() => {
+          // Если .js файла нет, читаем .tsx, трансформируем и сохраняем .js
+          logger.info(`JavaScript файл не найден для ${componentName}, создаем его из TypeScript`);
+          
+          fs.readFile(tsxPath, 'utf8')
+            .then(async (content) => {
+              try {
+                // Импортируем Babel для трансформации
+                const { transform } = await import('@babel/core');
+                
+                // Трансформируем TypeScript в JavaScript
+                const result = transform(content, {
+                  presets: [
+                    ['@babel/preset-typescript', { isTSX: true, allExtensions: true }],
+                    ['@babel/preset-react', { runtime: 'automatic' }]
+                  ],
+                  filename: `${componentName}.tsx`
+                });
+
+                if (!result || !result.code) {
+                  throw new Error('Ошибка трансформации Babel');
+                }
+
+                // Очищаем код
+                const cleanCode = result.code
+                  .replace(/import\s+.*?from\s+['"][^'"]+['"];?/g, '') // Удаляем все import statements
+                  .replace(/import\s+['"][^'"]+['"];?/g, '') // Удаляем import без from
+                  .replace(/export\s+.*?from\s+['"][^'"]+['"];?/g, '') // Удаляем export statements
+                  .replace(/export\s+default\s+[^;]+;/g, '') // Удаляем export default
+                  .replace(/interface\s+\w+\s*\{[^}]*\}/g, '') // Удаляем TypeScript интерфейсы
+                  .replace(/type\s+\w+\s*=\s*[^;]+;/g, '') // Удаляем TypeScript типы
+                  .replace(/:\s*React\.FC<[^>]+>/g, '') // Удаляем типизацию React.FC<Props>
+                  .replace(/:\s*\w+Props/g, '') // Удаляем ссылки на Props интерфейсы
+                  .replace(/className={\`([^`]+)\${([^}]+)}\`}/g, 'className={"$1" + $2}')
+                  .replace(/className={\`([^`]+)\`}/g, 'className={"$1"}');
+
+                // Сохраняем .js файл для будущих запросов
+                await fs.writeFile(jsPath, cleanCode, 'utf8');
+                logger.info(`💾 JavaScript файл создан: ${jsPath}`);
+                
+                res.json({
+                  success: true,
+                  data: {
+                    name: componentName,
+                    code: cleanCode,
+                    path: jsPath,
+                    type: 'javascript-generated'
+                  }
+                });
+              } catch (transformError) {
+                logger.error(`Ошибка трансформации ${componentName}:`, transformError);
+                res.status(500).json({
+                  success: false,
+                  error: 'Ошибка трансформации компонента'
+                });
+              }
+            })
+            .catch(error => {
+              res.status(404).json({
+                success: false,
+                error: 'Компонент не найден'
+              });
+            });
         });
     });
 
-    // Рендеринг компонента в HTML (упрощенная версия для совместимости)
-    router.get('/components/render/:id/:componentName', (req, res) => {
+    // Рендеринг компонента в HTML для iframe
+    router.get('/components/render/:id/:componentName', async (req, res) => {
       const { id, componentName } = req.params;
       
-      // Простой HTML с сообщением о том, что используется новый рендерер
-      const html = `
+      try {
+        // Получаем чистый JavaScript код компонента
+        const jsPath = path.join('output', id, `${componentName}.js`);
+        const tsxPath = path.join('output', id, `${componentName}.tsx`);
+        
+        let jsCode = '';
+        
+        // Пытаемся прочитать готовый JavaScript файл
+        try {
+          jsCode = await fs.readFile(jsPath, 'utf8');
+          logger.debug(`✅ Используем готовый JavaScript файл для iframe: ${jsPath}`);
+        } catch {
+          // Если .js файла нет, читаем .tsx, трансформируем и сохраняем .js
+          logger.info(`JavaScript файл не найден для ${componentName}, создаем его из TypeScript для iframe`);
+          
+          const tsxContent = await fs.readFile(tsxPath, 'utf8');
+          
+          // Импортируем Babel для трансформации
+          const { transform } = await import('@babel/core');
+          
+          // Трансформируем TypeScript в JavaScript
+          const result = transform(tsxContent, {
+            presets: [
+              ['@babel/preset-typescript', { isTSX: true, allExtensions: true }],
+              ['@babel/preset-react', { runtime: 'classic' }]
+            ],
+            filename: `${componentName}.tsx`
+          });
+
+          if (!result || !result.code) {
+            throw new Error('Ошибка трансформации Babel');
+          }
+
+          // Очищаем код - более агрессивная очистка
+          jsCode = result.code
+            .replace(/import\s+.*?from\s+['"][^'"]+['"];?\s*/g, '') // Удаляем все import statements
+            .replace(/import\s+['"][^'"]+['"];?\s*/g, '') // Удаляем import без from
+            .replace(/export\s+.*?from\s+['"][^'"]+['"];?\s*/g, '') // Удаляем export statements
+            .replace(/export\s+default\s+[^;]+;\s*/g, '') // Удаляем export default
+            .replace(/interface\s+\w+\s*\{[^}]*\}\s*/g, '') // Удаляем TypeScript интерфейсы
+            .replace(/type\s+\w+\s*=\s*[^;]+;\s*/g, '') // Удаляем TypeScript типы
+            .replace(/:\s*React\.FC<[^>]+>/g, '') // Удаляем типизацию React.FC<Props>
+            .replace(/:\s*\w+Props/g, '') // Удаляем ссылки на Props интерфейсы
+            .replace(/className={\`([^`]+)\${([^}]+)}\`}/g, 'className={"$1" + $2}')
+            .replace(/className={\`([^`]+)\`}/g, 'className={"$1"}')
+            .replace(/\/\/ React уже загружен\s*/g, '') // Удаляем комментарий
+            .trim(); // Убираем лишние пробелы
+
+          // Сохраняем .js файл для будущих запросов
+          await fs.writeFile(jsPath, jsCode, 'utf8');
+          logger.info(`💾 JavaScript файл создан для iframe: ${jsPath}`);
+        }
+        
+        // Определяем, нужна ли Chart.js для этого компонента
+        const needsChartJS = componentName.toLowerCase().includes('chart');
+        
+        // Создаем HTML для iframe с React компонентом
+        const html = `
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${componentName}</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    ${needsChartJS ? '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>' : ''}
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background-color: transparent;
+        }
+        #root {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script>
+        try {
+            // React уже загружен глобально
+            const { createElement: h, useState, useEffect, useRef } = React;
+            const { createRoot } = ReactDOM;
+            
+            // Код компонента
+            ${jsCode}
+            
+            // Рендерим компонент
+            const root = createRoot(document.getElementById('root'));
+            root.render(h(${componentName}));
+            
+            console.log('✅ Компонент ${componentName} успешно отрендерен в iframe');
+        } catch (error) {
+            console.error('❌ Ошибка рендеринга компонента в iframe:', error);
+            document.getElementById('root').innerHTML = \`
+                <div style="padding: 20px; color: #d32f2f; text-align: center;">
+                    <h3>Ошибка рендеринга компонента</h3>
+                    <p>\${error.message}</p>
+                    <details>
+                        <summary>Подробности</summary>
+                        <pre>\${error.stack}</pre>
+                    </details>
+                </div>
+            \`;
+        }
+    </script>
+</body>
+</html>`;
+        
+        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('X-Frame-Options', 'SAMEORIGIN'); // Разрешаем загрузку в iframe
+        res.send(html);
+        
+      } catch (error) {
+        logger.error(`Ошибка рендеринга компонента ${componentName} в iframe:`, error);
+        
+        // Возвращаем HTML с ошибкой
+        const errorHtml = `
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ошибка - ${componentName}</title>
     <style>
         body {
             margin: 0;
@@ -367,7 +589,7 @@ class ReactGeneratorApp {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
             background-color: #f5f5f5;
         }
-        .component-container {
+        .error-container {
             background: white;
             border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
@@ -375,20 +597,22 @@ class ReactGeneratorApp {
             max-width: 800px;
             margin: 0 auto;
             text-align: center;
+            color: #d32f2f;
         }
     </style>
 </head>
 <body>
-    <div class="component-container">
-        <h2>${componentName}</h2>
-        <p>Компонент теперь рендерится через ComponentRenderer</p>
-        <p>Используйте веб-интерфейс для просмотра</p>
+    <div class="error-container">
+        <h2>Ошибка загрузки компонента</h2>
+        <p><strong>${componentName}</strong></p>
+        <p>${error.message}</p>
     </div>
 </body>
 </html>`;
-      
-      res.setHeader('Content-Type', 'text/html');
-      res.send(html);
+        
+        res.setHeader('Content-Type', 'text/html');
+        res.status(500).send(errorHtml);
+      }
     });
 
     // Получение списка компонентов для изображения
@@ -728,6 +952,23 @@ class ReactGeneratorApp {
         logger.info(`📁 Мониторинг папки: ${path.join(process.cwd(), 'incoming')}`);
         logger.info(`🌐 Веб-интерфейс: http://localhost:${this.port}`);
         logger.info(`📊 API: http://localhost:${this.port}/api`);
+        
+        // Запуск фонового преобразования существующих компонентов (только один раз)
+        if (!this.backgroundJSTransformer.hasStarted) {
+          this.backgroundJSTransformer.transformAllComponentsAsync()
+            .then(totalTasks => {
+              if (totalTasks > 0) {
+                logger.info(`🔄 Запущено фоновое преобразование ${totalTasks} компонентов`);
+              } else {
+                logger.info('📁 Все компоненты уже имеют .js версии, фоновое преобразование не требуется');
+              }
+            })
+            .catch(error => {
+              logger.error('Ошибка запуска фонового преобразования:', error);
+            });
+        } else {
+          logger.debug('🔄 Фоновое преобразование уже запущено, пропускаем');
+        }
       });
 
       // Обработка ошибок сервера

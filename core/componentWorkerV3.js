@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import prettier from 'prettier';
 import { v4 as uuidv4 } from 'uuid';
+import { transform } from '@babel/core';
 import logger from '../utils/logger.js';
 
 /**
@@ -634,6 +635,18 @@ class ComponentWorkerV3 {
         return this.generateHeaderCode(name, baseParams, element);
       case 'NavigationComponent':
         return this.generateNavigationCode(name, baseParams, element);
+      case 'SidebarComponent':
+        return this.generateSidebarCode(name, baseParams, element);
+      case 'FormComponent':
+        return this.generateFormCode(name, baseParams, element);
+      case 'InputComponent':
+        return this.generateInputCode(name, baseParams, element);
+      case 'TextComponent':
+        return this.generateTextCode(name, baseParams, element);
+      case 'ImageComponent':
+        return this.generateImageCode(name, baseParams, element);
+      case 'ContainerComponent':
+        return this.generateContainerCode(name, baseParams, element);
       default:
         return this.generateGenericCode(name, baseParams, element);
     }
@@ -641,10 +654,10 @@ class ComponentWorkerV3 {
 
   // Методы генерации кода компонентов (копируем из ComponentWorkerV2)
   generateChartCode(componentName, params, element) {
-    return `import React from 'react';
+    return `import React, { useEffect, useRef } from 'react';
 
 interface ${componentName}Props {
-  data?: any[];
+  data?: any;
   title?: string;
   className?: string;
 }
@@ -654,6 +667,78 @@ const ${componentName}: React.FC<${componentName}Props> = ({
   title = "${params.title}", 
   className = '' 
 }) => {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+
+  useEffect(() => {
+    if (!canvasRef.current || !window.Chart) return;
+
+    // Уничтожаем предыдущий график
+    if (chartRef.current) {
+      chartRef.current.destroy();
+    }
+
+    // Подготавливаем данные для Chart.js
+    const chartData = {
+      labels: data.labels || ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн'],
+      datasets: [{
+        label: title || 'Данные',
+        data: data.values || [60, 65, 70, 75, 80, 85],
+        backgroundColor: [
+          'rgba(54, 162, 235, 0.2)',
+          'rgba(255, 99, 132, 0.2)',
+          'rgba(255, 205, 86, 0.2)',
+          'rgba(75, 192, 192, 0.2)',
+          'rgba(153, 102, 255, 0.2)',
+          'rgba(255, 159, 64, 0.2)'
+        ],
+        borderColor: [
+          'rgba(54, 162, 235, 1)',
+          'rgba(255, 99, 132, 1)',
+          'rgba(255, 205, 86, 1)',
+          'rgba(75, 192, 192, 1)',
+          'rgba(153, 102, 255, 1)',
+          'rgba(255, 159, 64, 1)'
+        ],
+        borderWidth: 2
+      }]
+    };
+
+    const config = {
+      type: 'line',
+      data: chartData,
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top'
+          },
+          title: {
+            display: !!title,
+            text: title
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true
+          }
+        }
+      }
+    };
+
+    // Создаем новый график
+    chartRef.current = new window.Chart(canvasRef.current, config);
+
+    // Очистка при размонтировании
+    return () => {
+      if (chartRef.current) {
+        chartRef.current.destroy();
+      }
+    };
+  }, [data, title]);
+
   return (
     <div 
       className={\`chart-container \${className}\`}
@@ -676,7 +761,8 @@ const ${componentName}: React.FC<${componentName}Props> = ({
           color: '${params.textColor}',
           fontSize: '${params.fontSize}',
           fontWeight: '${params.fontWeight}',
-          marginBottom: '16px'
+          marginBottom: '16px',
+          margin: '0 0 16px 0'
         }}>
           {title}
         </h3>
@@ -684,21 +770,10 @@ const ${componentName}: React.FC<${componentName}Props> = ({
       <div style={{
         width: '100%',
         height: '200px',
-        backgroundColor: '#f8f9fa',
-        border: '1px dashed #ccc',
-        borderRadius: '4px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#666'
+        position: 'relative'
       }}>
-        <p>Chart Component (${element.type})</p>
+        <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
       </div>
-      {data && Object.keys(data).length > 0 && (
-        <div style={{ marginTop: '16px', fontSize: '12px', color: '#666' }}>
-          Data: {JSON.stringify(data, null, 2)}
-        </div>
-      )}
     </div>
   );
 };
@@ -1053,6 +1128,497 @@ const ${componentName}: React.FC<${componentName}Props> = ({
 export default ${componentName};`;
   }
 
+  // Дополнительные методы генерации компонентов
+  generateSidebarCode(componentName, params, element) {
+    return `import React from 'react';
+
+interface ${componentName}Props {
+  className?: string;
+  children?: React.ReactNode;
+  isOpen?: boolean;
+  onToggle?: () => void;
+}
+
+const ${componentName}: React.FC<${componentName}Props> = ({ 
+  className = '', 
+  children,
+  isOpen = true,
+  onToggle
+}) => {
+  return (
+    <aside 
+      className={\`sidebar \${className}\`}
+      style={{
+        width: '${params.width}px',
+        height: '${params.height}px',
+        backgroundColor: '${params.backgroundColor}',
+        border: '${params.border}',
+        borderRadius: '${params.borderRadius}',
+        padding: '${params.padding}',
+        margin: '${params.margin}',
+        color: '${params.textColor}',
+        fontSize: '${params.fontSize}',
+        fontWeight: '${params.fontWeight}',
+        display: 'flex',
+        flexDirection: 'column',
+        position: 'relative',
+        boxShadow: '2px 0 5px rgba(0,0,0,0.1)',
+        transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform 0.3s ease'
+      }}
+    >
+      <div style={{
+        padding: '16px',
+        borderBottom: '1px solid #eee',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <h3 style={{ margin: 0, fontSize: '18px' }}>Sidebar</h3>
+        {onToggle && (
+          <button 
+            onClick={onToggle}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '20px',
+              cursor: 'pointer'
+            }}
+          >
+            {isOpen ? '×' : '☰'}
+          </button>
+        )}
+      </div>
+      <div style={{ flex: 1, padding: '16px' }}>
+        {children || (
+          <nav>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              <li style={{ marginBottom: '8px' }}>
+                <a href="#" style={{ textDecoration: 'none', color: 'inherit' }}>Menu Item 1</a>
+              </li>
+              <li style={{ marginBottom: '8px' }}>
+                <a href="#" style={{ textDecoration: 'none', color: 'inherit' }}>Menu Item 2</a>
+              </li>
+              <li style={{ marginBottom: '8px' }}>
+                <a href="#" style={{ textDecoration: 'none', color: 'inherit' }}>Menu Item 3</a>
+              </li>
+            </ul>
+          </nav>
+        )}
+      </div>
+    </aside>
+  );
+};
+
+export default ${componentName};`;
+  }
+
+  generateFormCode(componentName, params, element) {
+    return `import React, { useState } from 'react';
+
+interface ${componentName}Props {
+  className?: string;
+  onSubmit?: (data: any) => void;
+  children?: React.ReactNode;
+}
+
+const ${componentName}: React.FC<${componentName}Props> = ({ 
+  className = '', 
+  onSubmit,
+  children
+}) => {
+  const [formData, setFormData] = useState({});
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (onSubmit) {
+      onSubmit(formData);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  return (
+    <form 
+      className={\`form \${className}\`}
+      onSubmit={handleSubmit}
+      style={{
+        width: '${params.width}px',
+        height: '${params.height}px',
+        backgroundColor: '${params.backgroundColor}',
+        border: '${params.border}',
+        borderRadius: '${params.borderRadius}',
+        padding: '${params.padding}',
+        margin: '${params.margin}',
+        color: '${params.textColor}',
+        fontSize: '${params.fontSize}',
+        fontWeight: '${params.fontWeight}',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px'
+      }}
+    >
+      <h3 style={{ margin: '0 0 16px 0', textAlign: 'center' }}>Form</h3>
+      
+      {children || (
+        <>
+          <div>
+            <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>
+              Name:
+            </label>
+            <input
+              type="text"
+              name="name"
+              onChange={handleChange}
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px'
+              }}
+            />
+          </div>
+          
+          <div>
+            <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>
+              Email:
+            </label>
+            <input
+              type="email"
+              name="email"
+              onChange={handleChange}
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px'
+              }}
+            />
+          </div>
+          
+          <button
+            type="submit"
+            style={{
+              padding: '12px 24px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              fontSize: '16px',
+              cursor: 'pointer',
+              marginTop: '16px'
+            }}
+          >
+            Submit
+          </button>
+        </>
+      )}
+    </form>
+  );
+};
+
+export default ${componentName};`;
+  }
+
+  generateInputCode(componentName, params, element) {
+    return `import React, { useState } from 'react';
+
+interface ${componentName}Props {
+  className?: string;
+  placeholder?: string;
+  type?: string;
+  value?: string;
+  onChange?: (value: string) => void;
+  label?: string;
+}
+
+const ${componentName}: React.FC<${componentName}Props> = ({ 
+  className = '', 
+  placeholder = 'Enter text...',
+  type = 'text',
+  value = '',
+  onChange,
+  label
+}) => {
+  const [inputValue, setInputValue] = useState(value);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setInputValue(newValue);
+    if (onChange) {
+      onChange(newValue);
+    }
+  };
+
+  return (
+    <div 
+      className={\`input-container \${className}\`}
+      style={{
+        width: '${params.width}px',
+        height: '${params.height}px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px'
+      }}
+    >
+      {label && (
+        <label style={{
+          fontSize: '${params.fontSize}',
+          fontWeight: '${params.fontWeight}',
+          color: '${params.textColor}',
+          marginBottom: '4px'
+        }}>
+          {label}
+        </label>
+      )}
+      
+      <input
+        type={type}
+        value={inputValue}
+        onChange={handleChange}
+        placeholder={placeholder}
+        style={{
+          width: '100%',
+          height: '40px',
+          padding: '8px 12px',
+          border: '${params.border}',
+          borderRadius: '${params.borderRadius}',
+          fontSize: '${params.fontSize}',
+          backgroundColor: '${params.backgroundColor}',
+          color: '${params.textColor}',
+          outline: 'none',
+          transition: 'border-color 0.2s ease'
+        }}
+        onFocus={(e) => {
+          e.target.style.borderColor = '#007bff';
+        }}
+        onBlur={(e) => {
+          e.target.style.borderColor = '#ddd';
+        }}
+      />
+    </div>
+  );
+};
+
+export default ${componentName};`;
+  }
+
+  generateTextCode(componentName, params, element) {
+    return `import React from 'react';
+
+interface ${componentName}Props {
+  className?: string;
+  children?: React.ReactNode;
+  text?: string;
+  variant?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'span';
+  align?: 'left' | 'center' | 'right' | 'justify';
+}
+
+const ${componentName}: React.FC<${componentName}Props> = ({ 
+  className = '', 
+  children,
+  text = 'Sample text content',
+  variant = 'p',
+  align = 'left'
+}) => {
+  const Tag = variant as keyof JSX.IntrinsicElements;
+  
+  return (
+    <Tag 
+      className={\`text-component \${className}\`}
+      style={{
+        width: '${params.width}px',
+        height: '${params.height}px',
+        backgroundColor: '${params.backgroundColor}',
+        border: '${params.border}',
+        borderRadius: '${params.borderRadius}',
+        padding: '${params.padding}',
+        margin: '${params.margin}',
+        color: '${params.textColor}',
+        fontSize: '${params.fontSize}',
+        fontWeight: '${params.fontWeight}',
+        textAlign: align,
+        lineHeight: '1.5',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start'
+      }}
+    >
+      {children || text}
+    </Tag>
+  );
+};
+
+export default ${componentName};`;
+  }
+
+  generateImageCode(componentName, params, element) {
+    return `import React, { useState } from 'react';
+
+interface ${componentName}Props {
+  className?: string;
+  src?: string;
+  alt?: string;
+  fallbackSrc?: string;
+  onClick?: () => void;
+}
+
+const ${componentName}: React.FC<${componentName}Props> = ({ 
+  className = '', 
+  src = 'https://via.placeholder.com/300x200?text=Image+Placeholder',
+  alt = 'Image',
+  fallbackSrc = 'https://via.placeholder.com/300x200?text=Error+Loading',
+  onClick
+}) => {
+  const [imageSrc, setImageSrc] = useState(src);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+
+  const handleLoad = () => {
+    setIsLoading(false);
+    setHasError(false);
+  };
+
+  const handleError = () => {
+    setIsLoading(false);
+    setHasError(true);
+    setImageSrc(fallbackSrc);
+  };
+
+  return (
+    <div 
+      className={\`image-container \${className}\`}
+      style={{
+        width: '${params.width}px',
+        height: '${params.height}px',
+        backgroundColor: '${params.backgroundColor}',
+        border: '${params.border}',
+        borderRadius: '${params.borderRadius}',
+        padding: '${params.padding}',
+        margin: '${params.margin}',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+        overflow: 'hidden',
+        cursor: onClick ? 'pointer' : 'default'
+      }}
+      onClick={onClick}
+    >
+      {isLoading && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          color: '${params.textColor}',
+          fontSize: '${params.fontSize}'
+        }}>
+          Loading...
+        </div>
+      )}
+      
+      <img
+        src={imageSrc}
+        alt={alt}
+        onLoad={handleLoad}
+        onError={handleError}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          borderRadius: '${params.borderRadius}',
+          display: isLoading ? 'none' : 'block'
+        }}
+      />
+      
+      {hasError && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          color: '${params.textColor}',
+          fontSize: '${params.fontSize}',
+          textAlign: 'center'
+        }}>
+          <div>⚠️</div>
+          <div>Image failed to load</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ${componentName};`;
+  }
+
+  generateContainerCode(componentName, params, element) {
+    return `import React from 'react';
+
+interface ${componentName}Props {
+  className?: string;
+  children?: React.ReactNode;
+  direction?: 'row' | 'column';
+  justify?: 'flex-start' | 'center' | 'flex-end' | 'space-between' | 'space-around' | 'space-evenly';
+  align?: 'flex-start' | 'center' | 'flex-end' | 'stretch' | 'baseline';
+  wrap?: 'nowrap' | 'wrap' | 'wrap-reverse';
+}
+
+const ${componentName}: React.FC<${componentName}Props> = ({ 
+  className = '', 
+  children,
+  direction = 'column',
+  justify = 'flex-start',
+  align = 'flex-start',
+  wrap = 'nowrap'
+}) => {
+  return (
+    <div 
+      className={\`container \${className}\`}
+      style={{
+        width: '${params.width}px',
+        height: '${params.height}px',
+        backgroundColor: '${params.backgroundColor}',
+        border: '${params.border}',
+        borderRadius: '${params.borderRadius}',
+        padding: '${params.padding}',
+        margin: '${params.margin}',
+        color: '${params.textColor}',
+        fontSize: '${params.fontSize}',
+        fontWeight: '${params.fontWeight}',
+        display: 'flex',
+        flexDirection: direction,
+        justifyContent: justify,
+        alignItems: align,
+        flexWrap: wrap,
+        boxSizing: 'border-box'
+      }}
+    >
+      {children || (
+        <div style={{
+          textAlign: 'center',
+          color: '#666',
+          fontSize: '14px'
+        }}>
+          <p style={{ margin: '0 0 8px 0' }}>Container Component</p>
+          <p style={{ margin: 0, fontSize: '12px' }}>Add your content here</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ${componentName};`;
+  }
+
   /**
    * Генерация fallback компонента
    */
@@ -1185,9 +1751,7 @@ export default ${componentName};`,
         throw new Error('Некорректный компонент для сохранения');
       }
 
-      const filePath = path.join(outputDir, `${component.name}.tsx`);
-      
-      // Форматирование кода
+      // Форматирование TypeScript кода
       let formattedContent;
       try {
         formattedContent = await this.formatCode(component.content, 'tsx');
@@ -1196,12 +1760,69 @@ export default ${componentName};`,
         formattedContent = component.content;
       }
       
-      await fs.writeFile(filePath, formattedContent, 'utf8');
-      logger.info(`💾 Компонент сохранен: ${filePath}`);
+      // Сохраняем TypeScript версию
+      const tsxPath = path.join(outputDir, `${component.name}.tsx`);
+      await fs.writeFile(tsxPath, formattedContent, 'utf8');
+      logger.info(`💾 TypeScript компонент сохранен: ${tsxPath}`);
       
-      return filePath;
+      // Трансформируем в JavaScript
+      try {
+        const jsCode = await this.transformToJavaScript(formattedContent, component.name);
+        
+        // Сохраняем JavaScript версию
+        const jsPath = path.join(outputDir, `${component.name}.js`);
+        await fs.writeFile(jsPath, jsCode, 'utf8');
+        logger.info(`💾 JavaScript компонент сохранен: ${jsPath}`);
+        
+        return { tsxPath, jsPath };
+      } catch (transformError) {
+        logger.warn(`Ошибка трансформации в JavaScript для ${component.name}:`, transformError.message);
+        // Возвращаем только TypeScript путь, если трансформация не удалась
+        return { tsxPath };
+      }
+      
     } catch (error) {
       logger.error(`Ошибка сохранения компонента ${component.name}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Трансформация TypeScript/JSX кода в JavaScript
+   */
+  async transformToJavaScript(tsxCode, componentName) {
+    try {
+      const result = transform(tsxCode, {
+        presets: [
+          ['@babel/preset-typescript', { isTSX: true, allExtensions: true }],
+          ['@babel/preset-react', { runtime: 'classic' }]
+        ],
+        filename: `${componentName}.tsx`
+      });
+
+      if (!result || !result.code) {
+        throw new Error('Ошибка трансформации Babel');
+      }
+
+      // Очищаем код от import/export и TypeScript интерфейсов
+      const cleanCode = result.code
+        .replace(/import\s+.*?from\s+['"][^'"]+['"];?\s*/g, '') // Удаляем все import statements
+        .replace(/import\s+['"][^'"]+['"];?\s*/g, '') // Удаляем import без from
+        .replace(/export\s+.*?from\s+['"][^'"]+['"];?\s*/g, '') // Удаляем export statements
+        .replace(/export\s+default\s+[^;]+;\s*/g, '') // Удаляем export default
+        .replace(/interface\s+\w+\s*\{[^}]*\}\s*/g, '') // Удаляем TypeScript интерфейсы
+        .replace(/type\s+\w+\s*=\s*[^;]+;\s*/g, '') // Удаляем TypeScript типы
+        .replace(/:\s*React\.FC<[^>]+>/g, '') // Удаляем типизацию React.FC<Props>
+        .replace(/:\s*\w+Props/g, '') // Удаляем ссылки на Props интерфейсы
+        .replace(/className={\`([^`]+)\${([^}]+)}\`}/g, 'className={"$1" + $2}')
+        .replace(/className={\`([^`]+)\`}/g, 'className={"$1"}')
+        .replace(/\/\/ React уже загружен\s*/g, '') // Удаляем комментарий
+        .trim(); // Убираем лишние пробелы
+
+      logger.info(`🔄 Компонент ${componentName} трансформирован в JavaScript`);
+      return cleanCode;
+    } catch (error) {
+      logger.error(`Ошибка трансформации компонента ${componentName}:`, error);
       throw error;
     }
   }

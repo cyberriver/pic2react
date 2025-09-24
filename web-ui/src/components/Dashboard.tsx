@@ -70,7 +70,7 @@ const Dashboard: React.FC = () => {
   const { data: stats, isLoading: statsLoading } = useQuery<SystemStats>({
     queryKey: ['system-stats'],
     queryFn: async () => {
-      const response = await fetch('/api/health')
+      const response = await fetch('http://localhost:3001/api/health')
       const data = await response.json()
       return {
         totalProcessed: data.data.services.processingQueue.total || 0,
@@ -86,22 +86,40 @@ const Dashboard: React.FC = () => {
   const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: async () => {
-      const response = await fetch('/api/projects')
+      const response = await fetch('http://localhost:3001/api/projects')
       const data = await response.json()
       return data.data || []
     }
   })
 
   const handleFileUpload = async (files: File[]) => {
+    console.log('Получены файлы:', files)
+    console.log('Количество файлов:', files.length)
+    
     for (const file of files) {
+      console.log('Загружаем файл:', file.name, file.type, file.size)
+      console.log('Файл является File:', file instanceof File)
+      console.log('Файл конструктор:', file.constructor.name)
+      console.log('Файл прототип:', Object.getPrototypeOf(file))
+      
       const formData = new FormData()
       formData.append('image', file)
+      
+      // Проверяем FormData
+      console.log('FormData entries:')
+      for (const [key, value] of formData.entries()) {
+        console.log(key, value)
+      }
       
       try {
         const response = await fetch('http://localhost:3001/api/images/upload', {
           method: 'POST',
           body: formData
         })
+        
+        console.log('Response status:', response.status)
+        const responseText = await response.text()
+        console.log('Response text:', responseText)
         
         if (!response.ok) {
           throw new Error('Upload failed')

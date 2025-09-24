@@ -1,12 +1,13 @@
 {
   "name": "react-component-generator",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Автоматическая генерация React компонентов из изображений UI элементов",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
+    "dev": "node src/index.js",
+    "dev:watch": "nodemon src/index.js",
     "build": "npm run build:web-ui",
     "build:web-ui": "cd web-ui && npm run build",
     "install:web-ui": "cd web-ui && npm install",

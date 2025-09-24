@@ -25,6 +25,7 @@ interface FileUploadProps {
 interface FileWithPreview extends File {
   preview?: string
   id: string
+  originalFile?: File
 }
 
 const FileUpload: React.FC<FileUploadProps> = ({ onUpload }) => {
@@ -36,7 +37,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUpload }) => {
     const newFiles = acceptedFiles.map(file => ({
       ...file,
       id: Math.random().toString(36).substr(2, 9),
-      preview: URL.createObjectURL(file)
+      preview: URL.createObjectURL(file),
+      originalFile: file // Сохраняем оригинальный файл
     }))
     
     setFiles(prev => [...prev, ...newFiles])
@@ -79,7 +81,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUpload }) => {
         })
       }, 200)
 
-      await onUpload(files)
+      // Используем оригинальные File объекты
+      const fileObjects = files.map(file => file.originalFile || file)
+      await onUpload(fileObjects)
 
       setUploadProgress(100)
       setTimeout(() => {

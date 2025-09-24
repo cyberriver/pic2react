@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Box, Typography, Alert } from '@mui/material';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Box, Typography, Alert, CircularProgress } from '@mui/material';
 
 interface ComponentRendererProps {
   componentId: string;
@@ -14,59 +14,56 @@ const ComponentRenderer: React.FC<ComponentRendererProps> = ({
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [iframeUrl, setIframeUrl] = useState<string>('');
 
+  // Создаем URL для iframe
   useEffect(() => {
-    const loadAndRenderComponent = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+    const url = `/api/components/render/${componentId}/${componentName}`;
+    setIframeUrl(url);
+    console.log('ComponentRenderer: URL iframe установлен:', url);
+  }, [componentId, componentName]);
 
-        // Получаем чистый код компонента
-        const response = await fetch(`/api/components/clean/${componentId}/${componentName}`);
-        const data = await response.json();
+  // Обработчики событий iframe
+  const handleIframeLoad = useCallback(() => {
+    console.log('✅ iframe загружен успешно');
+    console.log('iframe src:', iframeRef.current?.src);
+    setLoading(false);
+    setError(null);
+  }, []);
 
-        if (!data.success) {
-          throw new Error(data.error || 'Ошибка загрузки компонента');
-        }
+  const handleIframeError = useCallback(() => {
+    console.error('❌ Ошибка загрузки iframe');
+    console.error('iframe src:', iframeRef.current?.src);
+    setError('Ошибка загрузки компонента в iframe');
+    setLoading(false);
+  }, []);
 
-        const { code } = data.data;
+  // Устанавливаем обработчики событий когда iframe готов
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe || !iframeUrl) return;
 
-        // Создаем изолированный контейнер для рендеринга
-        if (containerRef.current) {
-          // Очищаем контейнер
-          containerRef.current.innerHTML = '';
+    console.log('ComponentRenderer: Устанавливаем обработчики событий iframe');
+    
+    iframe.addEventListener('load', handleIframeLoad);
+    iframe.addEventListener('error', handleIframeError);
 
-          // Создаем React root
-          const root = ReactDOM.createRoot(containerRef.current);
-
-          try {
-            // Выполняем код компонента в безопасном контексте
-            const ComponentFunction = new Function('React', code + `; return ${componentName};`)(React);
-            
-            // Рендерим компонент
-            root.render(React.createElement(ComponentFunction));
-            
-          } catch (renderError) {
-            console.error('Ошибка рендеринга компонента:', renderError);
-            root.render(
-              React.createElement(Alert, { severity: 'error' }, 
-                `Ошибка рендеринга: ${renderError.message}`
-              )
-            );
-          }
-        }
-
-      } catch (err) {
-        console.error('Ошибка загрузки компонента:', err);
-        setError(err instanceof Error ? err.message : 'Неизвестная ошибка');
-      } finally {
+    // Таймаут на случай, если iframe не загрузится
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        console.warn('⏰ Таймаут загрузки iframe');
+        setError('Таймаут загрузки компонента');
         setLoading(false);
       }
-    };
+    }, 10000); // 10 секунд
 
-    loadAndRenderComponent();
-  }, [componentId, componentName]);
+    return () => {
+      clearTimeout(timeoutId);
+      iframe.removeEventListener('load', handleIframeLoad);
+      iframe.removeEventListener('error', handleIframeError);
+    };
+  }, [iframeUrl, handleIframeLoad, handleIframeError, loading]);
 
   if (loading) {
     return (
@@ -74,14 +71,19 @@ const ComponentRenderer: React.FC<ComponentRendererProps> = ({
         sx={{ 
           height, 
           display: 'flex', 
+          flexDirection: 'column',
           alignItems: 'center', 
           justifyContent: 'center',
           border: '1px solid #ddd',
           borderRadius: '4px',
-          backgroundColor: '#f9f9f9'
+          backgroundColor: '#f9f9f9',
+          gap: 2
         }}
       >
-        <Typography color="text.secondary">Загрузка компонента...</Typography>
+        <CircularProgress size={24} />
+        <Typography color="text.secondary" variant="body2">
+          Загрузка компонента в iframe...
+        </Typography>
       </Box>
     );
   }
@@ -96,25 +98,49 @@ const ComponentRenderer: React.FC<ComponentRendererProps> = ({
           justifyContent: 'center',
           border: '1px solid #ddd',
           borderRadius: '4px',
-          backgroundColor: '#ffebee'
+          backgroundColor: '#ffebee',
+          p: 2
         }}
       >
-        <Alert severity="error">{error}</Alert>
+        <Alert severity="error" sx={{ width: '100%' }}>
+          <Typography variant="body2" component="div">
+            <strong>Ошибка загрузки компонента:</strong>
+          </Typography>
+          <Typography variant="body2" component="div">
+            {error}
+          </Typography>
+        </Alert>
       </Box>
     );
   }
 
   return (
     <Box 
-      ref={containerRef}
       sx={{ 
         height,
         border: '1px solid #ddd',
         borderRadius: '4px',
-        overflow: 'auto',
-        backgroundColor: '#ffffff'
+        overflow: 'hidden',
+        backgroundColor: '#ffffff',
+        position: 'relative'
       }}
-    />
+    >
+      {iframeUrl && (
+        <iframe
+          ref={iframeRef}
+          src={iframeUrl}
+          style={{
+            width: '100%',
+            height: '100%',
+            border: 'none',
+            borderRadius: '4px'
+          }}
+          title={`Component: ${componentName}`}
+          sandbox="allow-scripts allow-same-origin"
+          loading="lazy"
+        />
+      )}
+    </Box>
   );
 };
 
